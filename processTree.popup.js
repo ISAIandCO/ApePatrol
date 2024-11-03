@@ -67,8 +67,8 @@
          let elem = {
             "id":x['tree_id'],
             "parent": parent,
-            "name": x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
-            "text": x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
+            "name": x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
+            "text": x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
             "original": x,
             "elemClass": elemClass
          }  
@@ -153,8 +153,8 @@ async function processTreeBranch(pre_events, outputelemsuffix="")
             let elem = {
                 "id":x['tree_id'],
                 "parent":parent,
-                "name":x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
-                "text":x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
+                "name":x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
+                "text":x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
                 "original":x,
                 "elemClass": elemClass
             } 
@@ -292,8 +292,8 @@ async function processTreeBranchReverse(pre_events, outputelemsuffix="")
                 let elem = {
                     "id":x['tree_id'],
                     "parent":parent,
-                    "name":x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
-                    "text":x['time'].slice(0,-9) + " | " + x['object.id'] + " | " + x[commandlineField],
+                    "name":x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
+                    "text":x['time'].slice(0,-9) + " | " + x['object.process.id'] + " | " + x[commandlineField],
                     "original":x,
                     "elemClass": elemClass
                 } 

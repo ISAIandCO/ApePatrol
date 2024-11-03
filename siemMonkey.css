@@ -35,6 +35,19 @@
   width: 180px;
 }
 
+/* 27.1 fix styles for right panel */
+.mc-dt.pt-text-overflow.ng-star-inserted {
+  width: 190px;
+}
+mc-dl.mc-dl {
+  grid-template-columns: 0.3fr 1fr 1fr 1fr !important;
+}
+pt-siem-events-link-popover {
+  display: flex;
+}
+
+
+
 div.mc-dt[title="object.hash"] { 
   color: red; 
   cursor: pointer; 

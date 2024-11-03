@@ -19,6 +19,7 @@ siem_bananas = {
   ".mc-sidebar_wide": "old",
   ".mc-sidebar_right": "R24",
   "mc-sidedar-toggle": "R25",
+  ".mc-sidebar-toggle": "R27.1",
 };
 siem_ver = "";
 prod_name = "";
@@ -67,12 +68,11 @@ var SearchBananas = function (selectors, callback, interval, timeout) {
         bananas_found = document.querySelectorAll(banana).length;
         if (bananas_found == 0) {
           // no bananas in DOM. try in shadow DOM
-          let legacy_events = $("legacy-events-page");
-          if (legacy_events.length === 1) {
-            let shadowRoot = legacy_events[0].shadowRoot;
-            if (shadowRoot) {
-              bananas_found = $(shadowRoot).find(banana).length;
-            }
+          let shadows = findRoots(document.body);
+          if (shadows) {
+            $.each(shadows, function (i, el){
+              bananas_found = $(el).find(banana).length;
+            })
           }
         }
         if (bananas_found > 0) {
@@ -88,10 +88,54 @@ var SearchBananas = function (selectors, callback, interval, timeout) {
   }, interval);
 };
 
+function findRoots(ele) {
+  return [
+      ele,
+      ...ele.querySelectorAll('*')
+  ].filter(e => !!e.shadowRoot)
+      .flatMap(e => [e.shadowRoot, ...findRoots(e.shadowRoot)])
+}
+
+/**
+ * Adopting a constructed stylesheet to be used by the document or ShadowRoots 
+ * @param {*} doc document or ShadowRoot to adopt
+ * @param {*} path CSS file path
+ */
+function adoptCSS(doc, path) {
+  let MonkeyCSS;
+  try {
+    let css_url = chrome.runtime.getURL(path);
+    let xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      MonkeyCSS = this.response;
+    };
+    xhr.open("GET", css_url, false);
+    xhr.send();
+  } catch (err) {
+    console.log("Не удалось прочитать файл " + path);
+    return;
+  }
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(MonkeyCSS);
+  doc.adoptedStyleSheets = [sheet];
+}
+
 SearchBananas(
   siem_bananas,
   function () {
     insertMonkeyIntoUI();
+
+    // load CSS in main tree
+    let ui_css_path = chrome.runtime.getURL("libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css");
+    let ui_css_path2 = chrome.runtime.getURL("siemMonkey.css");
+    $('head').append($('<link>')
+      .attr("rel","stylesheet")
+      .attr("type","text/css")
+      .attr("href", ui_css_path));
+    $('head').append($('<link>')
+      .attr("rel","stylesheet")
+      .attr("type","text/css")
+      .attr("href", ui_css_path2));
     // Если есть элементы "legacy-overlay" и "legacy-events-page", то мы очутились в 26.1
     // Загружать CSS и вешать обработчик мутаций страницы нужно внутри shadowRoot
     let legacy_overlay = $("legacy-overlay");
@@ -103,27 +147,7 @@ SearchBananas(
         characterData: true,
         attributes: true,
       });
-      let jquery_ui_css;
-      try {
-        let css_url = chrome.runtime.getURL(
-          "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css" // using jquery-ui css just with embedded images
-        );
-        let xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          jquery_ui_css = this.response;
-        };
-        xhr.open("GET", css_url, false);
-        xhr.send();
-      } catch (err) {
-        console.log(
-          "Не удалось прочитать файл libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"
-        );
-        return;
-      }
-
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(jquery_ui_css);
-      shadowRoot.adoptedStyleSheets = [sheet];
+      adoptCSS(shadowRoot, "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"); // using jquery-ui css just with embedded images
     }
 
     let legacy_events_page = $("legacy-events-page");
@@ -135,26 +159,18 @@ SearchBananas(
         characterData: true,
         attributes: true,
       });
-      let siemMonkeyCSS;
-      try {
-        let css_url = chrome.runtime.getURL("siemMonkey.css");
-        let xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          siemMonkeyCSS = this.response;
-        };
-        xhr.open("GET", css_url, false);
-        xhr.send();
-      } catch (err) {
-        console.log("Не удалось прочитать файл siemMonkey.css");
-        return;
-      }
-
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(siemMonkeyCSS);
-      shadowRoot.adoptedStyleSheets = [sheet];
+      adoptCSS(shadowRoot, "siemMonkey.css");
+    } else if ($("mc-sidebar").last()) {
+      sidebar = $("mc-sidebar").last()[0];
+      observer.observe(sidebar,{
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      })
     } else {
       // Старый добрый UI до 26.0 включительно - вешаем обработчик мутаций прямо на весь document,
-      // а CSSы уже и так загружены расширением
+      // CSS уже подгружен в основное дерево
       observer.observe(document, {
         childList: true,
         subtree: true,
@@ -164,7 +180,7 @@ SearchBananas(
     }
   },
   500,
-  6000
+  10000
 );
 
 function insertMonkeyIntoUI() {
@@ -377,6 +393,43 @@ let observer = new MutationObserver(async mutations => {
       }
 
       for(let addedNode of mutation.addedNodes) {
+        if(addedNode instanceof Node && addedNode.className === "mc-dt pt-text-overflow ng-star-inserted") {
+          // 27.1 adaptation
+          // console.log(addedNode);
+          if(addedNode.innerHTML.endsWith(".hash ") || addedNode.innerHTML.includes(".hash.") ) {
+            $(addedNode).css("color", "red").css("cursor", "pointer");
+            // if('options' in options && 'hashlinks' in options.options && options.options.hashlinks.length > 0) {
+            //   ObjectHashAdd(addedNode, addedNode.children[0].innerHTML);
+            // }
+            // else {
+              CommonFieldClickNew(addedNode, GetVirusTotalLinkForHash);
+            // }            
+          }
+          
+          if(addedNode.innerHTML === " external_link ") {
+              $(addedNode).css("color", "red").css("cursor", "pointer");
+              CommonFieldClickNew(addedNode, GetExternalLinkNew);
+          }
+
+          if(addedNode.innerHTML === " object ") {
+              $(addedNode).css("color", "red").css("cursor", "pointer");
+              ProcessHandlerNew(addedNode);  
+          }
+
+          if(addedNode.innerHTML ===  " uuid ") {
+            // TODO: 
+            // if('options' in options &&
+            //  'dont_show_save_event_icons' in options.options && 
+            //  options.options.dont_show_save_event_icons == true) {
+            //   ; //если задана опция "Не показывать кнопки сохранения JSON события", то и не показываем
+            // }
+            // else {
+            //   await uuidChange(addedNode);
+            // }
+            await shareableLinkIconAdd(addedNode);
+          } 
+        }
+
         // Регистрация обработчиков клика на названия определенных полей в правом сайдбаре (карточка события)
         if (addedNode instanceof Node && (addedNode.className === "mc-dl-conditional ng-scope")) {
               if(addedNode.children.length = 2 && addedNode.children[0].innerHTML === "uuid") {
@@ -786,12 +839,234 @@ function ProcessHandler(addedNode) {
   //}
 }
 
+function ProcessHandlerNew(addedNode) {
+  $('.monkeymagicicon').remove();
+
+  let value_node_span = $(".mc-link__text", $(addedNode).next());
+
+  let ancestors_branch_icon = $(`<span title="Предки процесса...">🦧</span>`);
+  let session_tree_icon = $(`<span title="Дерево процессов сессии...">🦍</span>`);
+  let descendants_tree_icon = $(`<span title="Потомки процесса...">🐒</span>`)
+  
+  ancestors_branch_icon.addClass("monkeymagicicon");
+  session_tree_icon.addClass("monkeymagicicon");
+  descendants_tree_icon.addClass("monkeymagicicon");
+  
+  value_node_span.closest('pt-siem-text-truncate').after(descendants_tree_icon);
+  value_node_span.closest('pt-siem-text-truncate').after(ancestors_branch_icon);
+  value_node_span.closest('pt-siem-text-truncate').after(session_tree_icon);
+
+    //одна ветка в дереве предков процесса
+    ancestors_branch_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title", `Родители процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+            treeBranchEvents = [];
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");
+
+      siemUrl = window.location.origin;
+
+      count = 1;
+
+      let time = getTimeValueFromSidebar();
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000 + 3600; // на 1 час вперёд
+
+      gtfrom = ttimeto - 86400; // и на сутки назад
+      gtto = ttimeto;
+
+      let uuid = getFieldValueFromSidebar("uuid");
+      let msgid = getFieldValueFromSidebar("msgid");
+
+      treeBranchEvents = [];
+
+      // Если текущее событие - событие запуска процесса, запускаем процесс построения дерева
+      if(msgid === '1' || msgid === '4688') {
+        getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranch, "", ttimeto - 86400, ttimeto);
+      }
+      // Иначе ищем доступными средствами соответсвующее событие запуска процесса 
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let uuid = e[0]['uuid'];
+            getdata(siemUrl, `uuid in ['${uuid}']`, count, processTreeBranch, "", ttimeto - 86400, ttimeto);
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+
+    //дерево процессов сессии
+    session_tree_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title",`Родители процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");;
+
+      siemUrl = window.location.origin;
+      let event_src_host = getFieldValueFromSidebar("event_src.host");
+      let processStartMsgid = getFieldValueFromSidebar("msgid"); 
+
+      let session = getFieldValueFromSidebar("object.account.session_id");
+      
+      let time = getTimeValueFromSidebar();
+
+      
+      // ограничение по числу процессов
+      // TODO: придумать способ задавать этот параметр при необходимости
+      count = 1000;
+
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000;
+
+      gtfrom = ttimeto - 86400;
+      gtto = ttimeto;
+      if(processStartMsgid === '1' || processStartMsgid === '4688') {
+        getdata(siemUrl, `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, count, processTree, "", ttimeto - 86400, ttimeto);
+      }
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let event_src_host = e[0]['event_src.host'];
+            let processStartMsgid = e[0]['msgid'];
+            let session = e[0]['object.account.session_id'];
+
+            getdata(siemUrl, `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, count, processTree, "", ttimeto - 86400, ttimeto);
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+
+    descendants_tree_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      events_for_children_waiting = [];
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title",`Потомки процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+            treeBranchEvents = [];
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");
+
+      siemUrl = window.location.origin;
+
+      count = 100;
+
+      let msgid = getFieldValueFromSidebar("msgid");
+      let uuid = getFieldValueFromSidebar("uuid");
+      let time = getTimeValueFromSidebar();
+
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000 + 86400; // на сутки вперед
+
+      gtfrom = ttimeto - 86400 - 600; // и на 10 минут назад на всякий случай
+      gtto = ttimeto;
+
+
+      treeBranchEvents = [];
+
+      // Если текущее событие - событие запуска процесса, запускаем процесс построения дерева
+      if(msgid === '1' || msgid === '4688') {
+        getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranchReverse, "", ttimeto - 86400 - 600, ttimeto);    //TODO: со временем путаница и не удобно, надо распутаться
+      }
+      // Иначе ищем доступными средствами соответсвующее событие запуска процесса 
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let uuid = e[0]['uuid'];
+            getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranchReverse, "", ttimeto - 86400 - 600, ttimeto);    //TODO: со временем путаница и не удобно, надо распутаться
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+  //}
+}
+
+
 /**
  * Получить значение поля события из правой панели 
  * @param {str} fieldName название поля
  * @returns {str} значение поля
  */
 function getFieldValueFromSidebar(fieldName) {
+
+  /* 27.1 */
+  let tmp = $(`mc-dt:contains("${fieldName}")`);
+  if (tmp.length === 1) {
+    let fieldValue = tmp.next().text().trim('↵');
+    return fieldValue;
+  }
+  else if (tmp.length > 1){
+      tmp = tmp.filter( function() {return $(this).text() === " " + fieldName + " "});
+      let fieldValue = tmp.next().text().trim('↵');
+      return fieldValue;
+  }
+
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
     let shadowRoot = legacy_events_page[0].shadowRoot;
@@ -812,10 +1087,17 @@ function getFieldValueFromSidebar(fieldName) {
  * @returns {str} время в виде строки вида 20.06.2023 13:18:49
  */
 function getTimeValueFromSidebar() {
+  /* 27.1 */
+  let new_sidebar_header = $("div.layout-padding_no-left.mc-sidebar-header__title.flex");
+  if(new_sidebar_header.length === 1) {
+    let time = new_sidebar_header.text().trim("↵");
+    console.log(time);
+    return time;
+  }
+
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
     let shadowRoot = legacy_events_page[0].shadowRoot;
-    // class="layout-padding_no-left mc-sidebar-header__title flex ng-binding"
     let time = $("mc-sidebar-opened > header > div.layout-row.flex > div > div", shadowRoot).text().trim("↵");
     return time;
   }
@@ -1063,6 +1345,23 @@ function ExtractHashFromHashValue(hash_to_check) {
 
 
 /**
+ * Обобщенный обработчик для добавления обработчика события onclick для названия поля события.
+ * По клику извлекает значение поля и передаёт его текст в качестве параметра при вызове callback-функции.
+ * Значение, возвращенное из callback интерпретируется как ссылка на внешний ресурс, корая открывается в новой вкладке.
+ * @param {Node} addedNode добавляемый на страницу узел
+ * @param {*} callback callback для получения ссылки на основе значения поля
+ */
+async function CommonFieldClickNew(addedNode,  callback) {
+  let element = $(addedNode);
+  element.click(async function (){
+    let valueNodes = $(this).next();
+    let value = valueNodes[0].outerText;
+    let link = await callback(value);
+    window.open(link, "_blank"); 
+  });
+} 
+
+/**
  * Возвращает ссылку на страницу VT для файла с определённым хешем
  * @param {string} object_hash значение поля object.hash (или других аналогичных полей)
  * @returns 
@@ -1117,6 +1416,17 @@ function GetVirusTotalLinkForHash(object_hash) {
     return external_link;
   }
 };
+
+/**
+ * Возвращает ссылку из поля external_link
+ * @param {string} external_link значение поля external_link (ссылка на внешний ресурс)
+ * @returns 
+ */
+async function GetExternalLinkNew(external_link) {
+  // //TODO: проверить, что значение начинается на 'http'
+    return external_link;
+};
+
 
 /**
  * Возвращает ссылку на PTKB с фильтром, содержашим id события для полнотекстового поиска нужно правила нормализации
@@ -1297,6 +1607,10 @@ async function shareableLinkIconAdd(addedNode){
   setTimeout(function(addedNode){
     let sidebar = $(addedNode).closest('mc-sidebar');
     let event_icon_type = $('event-icon-type', sidebar);
+    if (event_icon_type.length === 0) {
+      /* 27.1 */
+      event_icon_type = $('pt-siem-event-icon-type', sidebar);
+    }
     AddGetShareableEventLinkIcon(event_icon_type);
   },
   500,
@@ -1423,9 +1737,24 @@ async function popup_event_handler() {
       // получаем от SIEM список поддерживаемых полей и для каждого поля парсим из правого сайдбара значение
       let msg = await getTaxonomy();
       let fields = msg['fields'];
-      fields.forEach( x => {
-          params[x.name] = $(`div[title=\"${x.name}\"] + div > div > div:first`, applicationNode).text().trim('↵');
-      });
+      if(applicationNode != null && applicationNode.length != 0) {
+          fields.forEach( x => {
+            params[x.name] = $(`div[title=\"${x.name}\"] + div > div > div:first`, applicationNode).text().trim('↵');
+        });
+      }
+      else { /* 27.1 */
+        fields.forEach( x => {
+            let tmp = $(`mc-dt:contains("${x.name}")`);
+            params[x.name] = "";
+            if (tmp.length === 1) {
+                params[x.name] = tmp.next().text().trim('↵');
+            }
+            else if (tmp.length > 1){
+                tmp = tmp.filter( function() {return $(this).text() === " " + x.name + " "});
+                params[x.name] = tmp.next().text().trim('↵');
+            }
+        });
+      }
       params['time'] = getTimeValueFromSidebar();
   }
   catch(err)
@@ -1548,7 +1877,7 @@ async function applyFieldAliases(changedElement) {
 
 var gtfrom = 0;
 var gtto = 0;
-let icondataurl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAAABGdBTUEAALGPC/xhBQAAAAJiS0dEAP+Hj8y/AAAACXBIWXMAAA1nAAANZwG8Jya1AAAAB3RJTUUH5wEdDiU4kuliGwAABGBJREFUSMeNlV1sU2UYx3/v+Wg7t9LRtZRNZARGhM0hH3KB6ASFRASJiTFkRhMSLvRGjCYaEy8kJt7oBYkXRDAxITEsokFEoxdC7LZA5oRByBhjK8SxZXRfrK1td9qevq8X55R2DD+ek5z34n3+/+fzfR7BPGl3T0HOq2qUiQCUKIi0N6fcu455CHE/XCHN4nptp/cJX4PhcwhsyxrPXZS/6le0griPQsyHF1Et+jsNe1vCqwnhdfDkmGaYa1PjZ4qHxTV9HoWohCepfrH207Y1z7F0vmuAIs45ugYT72d+DFRQiPYKleKeyNF9DU+i8WCRXOCb8Yk39J/K9HorUBTFFcVNYmvg41dXPr3AdmW8y/H7b2ywknZYKpKa44EMcTDQXtsw6dluvPaP1stefM1v9pJ8YjzZwefatN4S1A+vfeuFYKM5o+0jwH+JIMR1bbu5Ljj3zN162am3HFx1cK8epp9FbPsX98vi5yZpWmkk3jyT1Hz7N5p+bCZp+l9wEDQxiY2fjaZvv1HVFAZsLMKuQpw/mCDABla5fRCjjxQRNlMPQBgLG4MwVU2GsqUBEokHgEFOUEWEMfrYRRvQxfdUUc0APbzOWsCDRAISZRuZy6Nb6lFuT2U4TSNbMJEM8gtB4AceYQ9JrjDCKd6mxvULRslc1gpHLqXu3CveKCk2kKeHGR5lCcf5Eo3n8XELjYeZZMzV1LjDpVThiKGfjK8488Fj1XkAchiYpBkgSIht5LjIGBNcJY1ABywA8vTRn4l/pp/UW4uiJ3l9xG8v22rWofidMEtZTRgND9UUue4GqJEiw0783OXc3NDZxEfaV+QNIK9/N3e+6me1HpayiU62sQybYaaQ5LCI0YiHDGO0Ue/Ef2PugPcOgOa8KmVhOzXexSJ6sblAJ3FmydIEXOUGQyxnd6lXbGUBdKA5D1NIVZQATJHgcVIM8RSCNawBniXADnaTYMp9D6oopIMspT9fSGUARZQwKzFYT4gp0qSZIsRmGmgmRBQFZCikcLKO4RwJy3MrDiS4yVY0/GxC8TLVwHJqCQKCZs6TYDFx8rcSVsQtJwARVegdlpJpioRQbs8H8eAh6MatCFFkGsmwLPRGFJUEQHds5DZZDExK81dV/EFhYpDlNrERukswzckliNjMqSgKhXTtaxWfKCUPRZSZUyJWmopGiclU9rGeXTXNkiw+Ckw4daWUqggmWSQxegbkMVOVb8rvfGj2UPRocfEodczRS/refFDUsAMPo0wTnZ09JIYqp4Mr7YDQ5Jt8sqL2FR4i74ZSitRDlm/5M8GH2hdKlse6XlLppxWUuCRGUutkXSNedIx7n0mBTgaGeU8cR1YuFr1sxaFQ/bJ7ojnTGKYKzU0mJIjS12Uf4KxQ81dbBYFDISBud8YXjTRlvBKbLBNcpfOvoROFd7XB+zcjC+eos6mkT7YZL/k2eusgN2P12ae1Ls1iAZwHDeLSsrM0bbEKgEjKWZ+b0Y4F2n8DLrW7Px/mhBwAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjMtMDEtMjlUMTQ6Mzc6NTErMDA6MDAjXia7AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDIzLTAxLTI5VDE0OjM3OjUxKzAwOjAwUgOeBwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAAASUVORK5CYII=";
+let icondataurl = "data:image/png;base64,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";
 let icon16dateurl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAABlVBMVEUAAABUWW6ChZRbYHRRV25cYHOYinJhYm1RVmtSV21VWm+rrbhTWG1iZnlcYXU0OlJWW3BnZ3AlK0ZZXnJxdYd4fY1PVGqHipm9v8fb3OBBS21PVGmPk6BiY2+ajHGRiX3U1duViHKumnOQhXJeYW+BeW6trbCAeW41Pl2rrbg1O1Opq7YQFzSWmaZ1eYqxtL1QVWp3e45LUmxwbXBJUW2De3HDqnQvP2xfYW93c3Di4+bi4+f////mw3W2rJv29/r3+Pr6+/z7+/v4+PjtyHW5s6z8/P7PztCzqpu2sKnn6Ovm5+ucqsCMoL3Gy9X8/P3Wt3S8t6/m5+y1pojdvHPVt3SropWKlqqRuORrrfVskb/n5+u7qYPcu3XtyXfmwnSLj41oqfJVpv9mkcT6+vuysK7TtXXEqnSum3ORiHVgfJ9fg6+fqbz6+vq2sKi5o3SynXS0nnO0nnLIrHK2sKfa3OG8qoX+1Hf50Xjxy3f60nj+1XfFr4H/1nf+1HinmHz0zXfCqXW5onTTtnbwy3fuyXfiwXbk7/kLAAAAOnRSTlMAAAAAAAAAAAAAAAAAAAAAAAAKQXaGIJzr/BU7tUXC7/7T/Mc1sfixIdgVzwmyaPwVtyq6GpbvC02GFDa/iQAAAAFiS0dEPKdqYc8AAAAJcEhZcwAADWcAAA1nAbwnJrUAAAAHdElNRQfnAR0OIht/z4WuAAABCUlEQVQY02NgYGRiFhIWERUVERZiZmJkYGBhZBUTl5C0spKUEBdjZWRhYJOSlrG2AQNrGWkpNgZZOXkFGyhQkJeTZVC0tbO3cXC0sXFytrG3s1VkUHJxdXP38PTy9vH183d1UWJQDggMCg4JDQuPiIyKDgxQZlBRVbOOiY2LT0hMSrZSU1dhYNfQTElNS8/IzMrOydXUYGfg0NJ2yAvNLygsKi5x0NbiYODU0S0tK6+orKyqLivV1eFk4OLW06+prQOC2hp9PW4uBkYeA8P6hsampsaGekMDHqBnePmMjJtbWltbmo2N+HgZGBgY+QVMTM3a2sxMTQT4gQqAIoKM5haWlhbmQAYDAwC+0TkTtbceAAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyMy0wMS0yOVQxNDozMjozMiswMDowMDLw/uUAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjMtMDEtMjlUMTQ6MzI6MzIrMDA6MDBDrUZZAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAABJRU5ErkJggg=="
 
 var commandline = '';
