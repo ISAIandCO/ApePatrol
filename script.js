@@ -20,6 +20,7 @@ siem_bananas = {
   ".mc-sidebar_right": "R24",
   "mc-sidedar-toggle": "R25",
   ".mc-sidebar-toggle": "R27.1",
+  "legacy-events-content": "R27.1"
 };
 siem_ver = "";
 prod_name = "";
@@ -160,6 +161,19 @@ SearchBananas(
         attributes: true,
       });
       adoptCSS(shadowRoot, "siemMonkey.css");
+    }
+
+    let legacy_events_content = $("legacy-events-content");
+    if (legacy_events_content.length === 1) {
+      let shadowRoot = legacy_events_content[0].shadowRoot;
+      observer.observe(shadowRoot, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      adoptCSS(shadowRoot, "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"); // using jquery-ui css just with embedded images
+      //adoptCSS(shadowRoot, "siemMonkey.css");
     } else if ($("mc-sidebar").last()) {
       sidebar = $("mc-sidebar").last()[0];
       observer.observe(sidebar,{
@@ -167,7 +181,14 @@ SearchBananas(
         subtree: true,
         characterData: true,
         attributes: true,
-      })
+      });
+      pt_siem_main = $("pt-siem-main").last()[0];
+      observer2.observe(pt_siem_main, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
     } else {
       // Старый добрый UI до 26.0 включительно - вешаем обработчик мутаций прямо на весь document,
       // CSS уже подгружен в основное дерево
@@ -179,8 +200,8 @@ SearchBananas(
       });
     }
   },
-  500,
-  10000
+  8000,
+  24000
 );
 
 function insertMonkeyIntoUI() {
@@ -283,6 +304,7 @@ function extractLast( term ) {
 
 let observer = new MutationObserver(async mutations => {
   for(let mutation of mutations) {
+    //console.log(mutation);
       if(mutation.target.parentNode && mutation.target.parentNode.nodeName === 'EVENTS-FILTER-POPOVER'){
         // ━━━━━★. *･｡ﾟ✧⁺
         if(fields.length == 0)
@@ -349,6 +371,36 @@ let observer = new MutationObserver(async mutations => {
           }
         });
       }
+
+      // Добавим поле input для того, чтобы пользователь мог ввести описание для добавленного индикатора
+      // (само добавление данных реализовано в xhr_override.js)        
+      // TODO: добавить проверку параметра в настройках
+      if(mutation.target && mutation.target.nodeName == 'IC-PROGRESS-CONTAINER' && 
+        mutation.target.nodeName && mutation.target.parentNode.nodeName == 'PT-SIEM-WHITELISTS-CARD' &&
+        mutation.type === 'attributes'){
+        
+        // Если в параметрах расширения включена нужная галочка
+        if('options' in options && 'add_input_for_IOCs_description' in options.options && options.options.add_input_for_IOCs_description == true){
+          // console.log(mutation.target.nodeName + ' <- ' + mutation.target.parentNode.nodeName);
+          // сохраним в атрибутах элемента input имя пользователя, который добавляет исключение, и token табличного
+          // списка IOCs_value, в который будет добавляться вводимое описание
+          let current_siem_user_info = await getCurrentUserInfo();
+          let current_siem_username = current_siem_user_info['userName'];
+          let tables_info = await getTablesInfo();
+          let IOCs_Value_info = tables_info.filter(function(item) { return item.name === 'IOCs_Value'; });
+          let IOCs_Value_token = IOCs_Value_info[0]['token'];
+          //console.log(mutation.target.parentNode.nodeName);
+          let input_node = $('<input>')
+          .addClass('iocs_description')
+          .attr('title', 'Описание индикатора для добавления в IOCs_Value')
+          .attr('user', current_siem_username)
+          .attr('token', IOCs_Value_token)
+          .attr('placeholder', 'Текст отсюда вносится в description в ТС IOCs_Value');
+          let whitelists_card = $(mutation.target.parentNode.nodeName);
+          whitelists_card.prepend(input_node);
+        }
+      }
+
 
       //Добавляет описание и ссылку на правило в разделе "события"
       if(mutation.target.parentNode && mutation.target.parentNode.parentNode 
@@ -480,6 +532,66 @@ let observer = new MutationObserver(async mutations => {
 });
 
 
+let observer2 = new MutationObserver(async mutations => {
+  for (let mutation of mutations) {
+    //console.log(mutation);
+    // if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-RECORDS-ACTION-BAR') {
+    //   console.log(mutation);
+    // }
+
+    if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-MODE-CHANGER') {
+      // console.log(mutation)
+
+      let parent_node = $(mutation.target.parentNode);
+      let monkey_trash_node = $("#monkey-trash");
+      if (monkey_trash_node.length == 0) {
+        let new_i = $("<i>")
+        .addClass("mc-btn__icon pt-icons pt-icons-delete_16")
+        .attr("id", "monkey-trash")
+        .css('cursor', 'pointer')
+        .attr('title', 'Удалить выделенную запись');
+        new_i.on("click", async function() {
+          let selected_row = $(".ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-focus.ag-row-selected");
+          let row_data = []
+          let spans = $("span", selected_row);
+          spans.each(function() {
+            row_data.push($(this).text().trim());
+          })
+          let url = new URL(window.location.href.replace('#',''));
+          let tableid = url.searchParams.get('table');
+          let newurl = window.location.origin + `/api/whitelists/${tableid}/remove`;
+          row_data.shift();
+          await removeRowFromTableList(newurl, row_data);
+          
+        })
+        parent_node.append(new_i);
+      }
+    }
+  }
+})
+
+
+async function removeRowFromTableList(url, data) {
+  let request = await $.ajax
+  (
+      {
+          type: "POST",
+          url: url,
+          data: JSON.stringify(data),
+          contentType: 'application/json; charset=utf-8',
+          success: function(response) {
+            //console.log(response);
+            // "нажать" на кнопку "обновить", чтобы перезагрузить содержимое ТС в UI
+            $("button.mc-button_transparent.ic-refresher__update.mc-icon-button.mc-second").click();
+          },
+          error: function(error) {
+            console.log(error);
+          }
+      }
+  );
+  return request;
+}
+
 async function GetOptionsFromStorage(){
   options  = await getStorageData('options');
 }
@@ -493,6 +605,33 @@ const getStorageData = key =>
             : resolve(result)
         )
     )  
+
+function getTablesInfo()
+{
+  //TODO: решить, как быть с разными конвейерами
+  let siemUrl = window.location.origin;
+  var request = $.ajax
+  (
+    {
+      type: "GET",
+      url: `${siemUrl}/api/events/v2/table_lists`
+    }
+  )
+  return request;
+}
+
+function getCurrentUserInfo()
+{
+  let siemUrl = window.location.origin;
+  var request = $.ajax
+  (
+    {
+      type: "GET",
+      url: `${siemUrl}/api/account/userinfo`
+    }
+  )
+  return request;
+}
 
 
 function getTaxonomy()
@@ -1087,8 +1226,17 @@ function getFieldValueFromSidebar(fieldName) {
  * @returns {str} время в виде строки вида 20.06.2023 13:18:49
  */
 function getTimeValueFromSidebar() {
+  /* 27.2 */
+  let newest_sidebar_header = $("div.layout-padding-no-left.mc-sidebar-header__title.flex");
+  if(newest_sidebar_header.length === 1) {
+    let time = newest_sidebar_header.text().trim("↵");
+    time = time.replace(",","");
+    console.log(time);
+    return time;
+  }
   /* 27.1 */
   let new_sidebar_header = $("div.layout-padding_no-left.mc-sidebar-header__title.flex");
+                                  
   if(new_sidebar_header.length === 1) {
     let time = new_sidebar_header.text().trim("↵");
     console.log(time);
@@ -1872,9 +2020,6 @@ async function applyFieldAliases(changedElement) {
   }
 }
 
-
-
-
 var gtfrom = 0;
 var gtto = 0;
 let icondataurl = "data:image/png;base64,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";
@@ -1885,17 +2030,8 @@ var treeBranchEvents = [];
 // идентификаторы событий, для которых ожидаем получение процессов потомков
 var events_for_children_waiting = [];
 var fields = [];
-options = {};
+var options = {};
+
 GetOptionsFromStorage().then(() => {
-  // Если включен параметр "Отключить новое поведение сортировки при аггрегации (R25.1 и выше)", то
-  // подгрузим код из файла xhr_override.js, который будет убирать из параметров запроса лишнее поле, отвечающее за
-  // новый способ сортировки
-  if('options' in options && 'disable_agg_sort' in options.options && options.options.disable_agg_sort == true) {
-    var s = document.createElement('script');
-    s.src = chrome.runtime.getURL('xhr_override.js');
-    s.onload = function() {
-        this.remove();
-    };
-    (document.head || document.documentElement).appendChild(s);
-  }
+  ;
 });

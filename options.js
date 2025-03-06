@@ -18,6 +18,8 @@ function save_options() {
   let dont_show_save_event_icons = document.getElementById('dont_show_save_event_icons').checked;
   let dont_show_desc_rules = document.getElementById('dont_show_desc_rules').checked;
   let disable_agg_sort = document.getElementById('disable_agg_sort').checked;
+  let add_input_for_IOCs_description = document.getElementById('add_input_for_IOCs_description').checked;
+  let disable_edr_integration = document.getElementById('disable_edr_integration').checked;
   let iplinks = [];
   $(".iplink").each(function(index){
       let name = $(".iplink_name", $(this)).val();
@@ -34,7 +36,7 @@ function save_options() {
   });
  
 
-  let options = {vt_api_key, iplinks, hashlinks, dont_show_save_event_icons, dont_show_desc_rules, disable_agg_sort};
+  let options = {vt_api_key, iplinks, hashlinks, dont_show_save_event_icons, dont_show_desc_rules, disable_agg_sort, add_input_for_IOCs_description, disable_edr_integration};
   chrome.storage.sync.set(
     {options},
     function() {
@@ -75,6 +77,20 @@ function restore_options() {
       }
       else{
         document.getElementById('disable_agg_sort').checked = false;
+      }
+
+      if(items.options.hasOwnProperty('add_input_for_IOCs_description')){
+        document.getElementById('add_input_for_IOCs_description').checked = items.options['add_input_for_IOCs_description'];
+      }
+      else{
+        document.getElementById('add_input_for_IOCs_description').checked = false;
+      }
+
+      if(items.options.hasOwnProperty('disable_edr_integration')){
+        document.getElementById('disable_edr_integration').checked = items.options['disable_edr_integration'];
+      }
+      else{
+        document.getElementById('disable_edr_integration').checked = false;
       }
       
       iplinks = items.options['iplinks'];

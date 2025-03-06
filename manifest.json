@@ -60,7 +60,8 @@
 	"permissions": [
         "tabs", 
 		"storage",
-		"contextMenus"
+		"contextMenus",
+		"scripting", "activeTab", "webNavigation"
     ],
 	"host_permissions": [
         "http://*/*", 
@@ -68,5 +69,8 @@
 	],
 	"options_ui":{
 		"page": "options.html"
+	},
+	"background": {
+		"service_worker": "sw.js"
 	}
 }
