@@ -28,9 +28,7 @@ const getStorageData = key =>
         )
     )  
 
-function  sendSiemMonkeyOptions(param){
-    console.log("продам гараж");
-    console.log(param);
+function  sendSiemMonkeyOptions(param) {
     window.globalMonkeyOptions = param;
 }
 

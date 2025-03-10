@@ -199,6 +199,15 @@ SearchBananas(
         attributes: true,
       });
     }
+
+      observer3.observe(document, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+    // }
+
   },
   8000,
   24000
@@ -294,6 +303,8 @@ function extractLast( term ) {
   else {
     textbox = $("events-filter-popover textarea");
   }
+  if(textbox.length === 0) 
+    textbox = $("textarea#pdqlFilterText");
  
   let end = textbox[0].selectionStart;
   let result = /\S+$/.exec(textbox[0].value.slice(0, end));
@@ -304,74 +315,7 @@ function extractLast( term ) {
 
 let observer = new MutationObserver(async mutations => {
   for(let mutation of mutations) {
-    //console.log(mutation);
-      if(mutation.target.parentNode && mutation.target.parentNode.nodeName === 'EVENTS-FILTER-POPOVER'){
-        // ━━━━━★. *･｡ﾟ✧⁺
-        if(fields.length == 0)
-        {
-          let msg = await getTaxonomy();
-          let fieldsinfo = msg['fields'];
-          fields = fieldsinfo.filter(x => x.filterable == true).map(y => y['name']); //не все поля подходят для фильтров 
-          fields.push('=');
-          fields.push('!=');
-          fields.push('>');
-          fields.push('<');
-          fields.push('>=');
-          fields.push('<=');
-          fields.push('in');
-          fields.push('match');
-          fields.push('startswith');
-          fields.push('endswith');
-          fields.push('contains');
-          fields.push('and');
-          fields.push('or');
-          fields.push('not');
-          fields.push('in_subnet');
-        }
-
-        ta = $("textarea", mutation.target.parentNode);
-        ta.on("keydown", function(event) {
-          if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete("instance").menu.active) {
-            event.preventDefault();
-          }
-        })
-        .autocomplete({
-          appendTo: ta.parent(),
-          position: {my : "left top", at: `right top`},
-          minLength: 1,
-          source: function(request, response) {
-            response($.ui.autocomplete.filter(fields, extractLast(request.term )));
-          },
-          focus: function() {
-            return false;
-          },
-          open: function() {
-            ta.textareaHelper();
-            let XY = ta.textareaHelper("caretPos");
-            let x = XY.left + 5;
-            let y = XY.top + 20;
-            $('.ui-autocomplete', ta.parent()).css('width', '230px'); // 230px хватит всем
-            $('.ui-autocomplete', ta.parent()).position({my: "left top", at: `left+${x} top+${y}`, of: ta});
-            // click is not triggered somehow. but mousedown is working. trigger click from mousedown
-            let items = $(".ui-menu-item", ta.parent());
-            items.on("mousedown", function (event) {
-              event.preventDefault();
-              $(this).click();
-            });
-          },
-          select: function(event, ui) {
-            let textbox = $(this);
-            let end = textbox[0].selectionStart;
-            let start = this.value.lastIndexOf(" ", end);
-            let newvalue = this.value.substring(0, start) + " " //старое начало
-            + ui.item.value + " "                               //новая середина
-            + this.value.substring(end, this.value.length);     //старый конец
-            this.value = newvalue;
-            return false;
-          }
-        });
-      }
-
+     //console.log(mutation);
       // Добавим поле input для того, чтобы пользователь мог ввести описание для добавленного индикатора
       // (само добавление данных реализовано в xhr_override.js)        
       // TODO: добавить проверку параметра в настройках
@@ -403,21 +347,25 @@ let observer = new MutationObserver(async mutations => {
 
 
       //Добавляет описание и ссылку на правило в разделе "события"
-      if(mutation.target.parentNode && mutation.target.parentNode.parentNode 
-        && mutation.target.parentNode.parentNode.nodeName === 'RULES-CARD-LINK'
-        && mutation.target.parentNode.className === 'mc-link ng-binding ng-scope'
+      if(mutation.target.parentNode 
+         && mutation.target.parentNode.parentNode 
+         && mutation.target.parentNode.parentNode.parentNode
+        //&& mutation.target.parentNode.parentNode.nodeName === 'RULES-CARD-LINK'
+        && mutation.target.parentNode.parentNode.parentNode.nodeName === 'PT-SIEM-RULES-CARD-LINK'
+        //&& mutation.target.parentNode.className === 'mc-link ng-binding ng-scope'
         && 'options' in options && 'dont_show_desc_rules' in options.options && options.options.dont_show_desc_rules === false){
-          
-          let correlation_name_node = $(mutation.target.parentNode.parentNode).children('span.mc-link.ng-scope');
-          $(mutation.target.parentNode.parentNode).children('span.corr-desc').remove();
-          $(mutation.target.parentNode.parentNode).children('i.corr-link').remove();
+          console.log("bbbbbbbb");
+          //let correlation_name_node = $(mutation.target.parentNode.parentNode).children('span.mc-link.ng-scope');
+          let correlation_name_node = $(mutation.target.parentNode.parentNode.parentNode).children('span.mc-link');
+          $(mutation.target.parentNode.parentNode.parentNode).children('span.corr-desc').remove();
+          $(mutation.target.parentNode.parentNode.parentNode).children('i.corr-link').remove();
           
           let correlation_name = correlation_name_node.text();
           let msg = await getCorrelationRuleInfoByName(correlation_name);
           let [correlation_description, correlation_link_to_ptkb] = corr_name_info(msg);
 
-          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_description);
-          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_link_to_ptkb);
+          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_description, ".corr-desc");
+          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_link_to_ptkb, ".corr-link");
       }
 
       //Добавляет описание и ссылку на правило в разделе "инциденты"
@@ -571,6 +519,79 @@ let observer2 = new MutationObserver(async mutations => {
 })
 
 
+let observer3 = new MutationObserver(async mutations => {
+  for(let mutation of mutations) {
+         
+        if(mutation.target.parentNode && mutation.target.parentNode.nodeName === 'MC-POPOVER-COMPONENT'){
+          console.log(mutation.target, mutation.target.parentNode);
+          // ━━━━━★. *･｡ﾟ✧⁺
+          if(fields.length == 0)
+          {
+            let msg = await getTaxonomy();
+            let fieldsinfo = msg['fields'];
+            fields = fieldsinfo.filter(x => x.filterable == true).map(y => y['name']); //не все поля подходят для фильтров 
+            fields.push('=');
+            fields.push('!=');
+            fields.push('>');
+            fields.push('<');
+            fields.push('>=');
+            fields.push('<=');
+            fields.push('in');
+            fields.push('match');
+            fields.push('startswith');
+            fields.push('endswith');
+            fields.push('contains');
+            fields.push('and');
+            fields.push('or');
+            fields.push('not');
+            fields.push('in_subnet');
+          }
+  
+          ta = $("textarea", mutation.target.parentNode);
+          ta.on("keydown", function(event) {
+            if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete("instance").menu.active) {
+              event.preventDefault();
+            }
+          })
+          .autocomplete({
+            appendTo: ta.parent(),
+            position: {my : "left top", at: `right top`},
+            minLength: 1,
+            source: function(request, response) {
+              response($.ui.autocomplete.filter(fields, extractLast(request.term )));
+            },
+            focus: function() {
+              return false;
+            },
+            open: function() {
+              ta.textareaHelper();
+              let XY = ta.textareaHelper("caretPos");
+              let x = XY.left + 5;
+              let y = XY.top + 20;
+              $('.ui-autocomplete', ta.parent()).css('width', '230px'); // 230px хватит всем
+              $('.ui-autocomplete', ta.parent()).position({my: "left top", at: `left+${x} top+${y}`, of: ta});
+              // click is not triggered somehow. but mousedown is working. trigger click from mousedown
+              let items = $(".ui-menu-item", ta.parent());
+              items.on("mousedown", function (event) {
+                event.preventDefault();
+                $(this).click();
+              });
+            },
+            select: function(event, ui) {
+              let textbox = $(this);
+              let end = textbox[0].selectionStart;
+              let start = this.value.lastIndexOf(" ", end);
+              let newvalue = this.value.substring(0, start) + " " //старое начало
+              + ui.item.value + " "                               //новая середина
+              + this.value.substring(end, this.value.length);     //старый конец
+              this.value = newvalue;
+              return false;
+            }
+          });
+        }
+  }
+});
+
 async function removeRowFromTableList(url, data) {
   let request = await $.ajax
   (
@@ -670,7 +691,7 @@ function corr_name_info(msg)
 
   let correlation_description = $('<span>')
   .addClass('corr-desc')
-  .addClass('mc-text-light')
+  .addClass('event-info_text-light')
   .text(` (${description})`);
 
   let correlation_link_to_ptkb = $('<i title="Открыть правило в Knowledge Base">')

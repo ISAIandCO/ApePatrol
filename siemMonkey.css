@@ -206,3 +206,22 @@ div.openMsgs
 events-grouping pdql-fast-filter {
   max-width: 100% !important;
 }
+
+#cdk-overlay-container mc-popover-component {
+  width: 1200px;
+  max-width: 1200px;
+}
+mc-form-field textarea {
+  height: 10em;
+}
+
+mc-sidebar.mc-sidebar {
+  max-width: unset !important;
+  /* width: unset !important; */
+}
+mc-sidebar div.ag-cell-value.ag-cell.ag-cell-not-inline-editing.ag-cell-normal-height {
+  width: unset !important;
+}
+mc-sidebar div.ag-center-cols-container {
+  width: unset !important;
+}
