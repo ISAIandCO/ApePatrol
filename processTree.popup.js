@@ -17,11 +17,20 @@
  * Оторазить информацию о процессах в виде дерева
  * @param {list} pre_events список событий
  * @param {string} outputelemsuffix класс DOM-елемента, где требуется отобразить информацию
+ * @param {string} filter_regex регулярное выражение для фильтрации событий
  */
- function processTree(pre_events, outputelemsuffix="")
+ function processTree(pre_events, outputelemsuffix="", filter_regex="")
  {
      let commandlineField = "object.process.cmdline";
      let events;
+
+
+    // Фильтруем события, исключая те, у которых значение object.process.cmdline совпадает с filter_regex
+    if (filter_regex) {
+        const regex = new RegExp(filter_regex);
+        pre_events = pre_events.filter(x => !regex.test(x[commandlineField]));
+    }
+
      if(pre_events[0]['msgid'].includes("exec")) {
          events = pre_events.map(x => ({
             ...x,

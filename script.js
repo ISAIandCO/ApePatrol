@@ -13,14 +13,15 @@
 //    limitations under the License.
 
 
-pt_tags = ["pt-siem-app-root", "pt-nad-root"];
+pt_tags = ["pt-siem-app-root", "pt-nad-root", "ips-root"];
 pt_product = false;
 siem_bananas = {
   ".mc-sidebar_wide": "old",
   ".mc-sidebar_right": "R24",
   "mc-sidedar-toggle": "R25",
   ".mc-sidebar-toggle": "R27.1",
-  "legacy-events-content": "R27.1"
+  "legacy-events-content": "R27.1",
+  "mc-navbar-title": "R27.3"
 };
 siem_ver = "";
 prod_name = "";
@@ -72,7 +73,7 @@ var SearchBananas = function (selectors, callback, interval, timeout) {
           let shadows = findRoots(document.body);
           if (shadows) {
             $.each(shadows, function (i, el){
-              bananas_found = $(el).find(banana).length;
+              bananas_found += $(el).find(banana).length;
             })
           }
         }
@@ -163,6 +164,21 @@ SearchBananas(
       adoptCSS(shadowRoot, "siemMonkey.css");
     }
 
+    let ips_shell_remote_app = $("ips-shell-remote-app");
+    if( ips_shell_remote_app.length === 1) {
+      let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+      let siem_core = $("siem-core", shadowRootOne);
+      let shadowRootTwo = siem_core[0].shadowRoot;
+      observer.observe(shadowRootTwo, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      adoptCSS(shadowRootTwo, "siemMonkey.css");
+    }
+    
+
     let legacy_events_content = $("legacy-events-content");
     if (legacy_events_content.length === 1) {
       let shadowRoot = legacy_events_content[0].shadowRoot;
@@ -174,7 +190,7 @@ SearchBananas(
       });
       adoptCSS(shadowRoot, "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"); // using jquery-ui css just with embedded images
       //adoptCSS(shadowRoot, "siemMonkey.css");
-    } else if ($("mc-sidebar").last()) {
+    } else if ($("mc-sidebar").last().length != 0) {
       sidebar = $("mc-sidebar").last()[0];
       observer.observe(sidebar,{
         childList: true,
@@ -215,6 +231,13 @@ SearchBananas(
 
 function insertMonkeyIntoUI() {
   let siem_title_elem = $("body > pt-siem-app-root > pt-siem-header > header > mc-navbar > mc-navbar-container:nth-child(1) > pt-siem-navbar-brand > a > mc-navbar-title");
+  let root = document.body;
+  if (siem_title_elem.length === 0) {
+    let ipn_navbar_elem = $("body > ips-root > ips-overlay-mask > ipc-remote-projection > ipn-navbar");
+    root = ipn_navbar_elem[0].shadowRoot;
+    siem_title_elem = $("main > ipn-navbar-container > header > mc-navbar > mc-navbar-container:nth-child(1) > ipn-navbar-brand > a > mc-navbar-title", root);
+  }
+  
   let siem_title = siem_title_elem.text();
 
   let nad_title_elem = $(".mc-navbar-title:first");
@@ -222,9 +245,9 @@ function insertMonkeyIntoUI() {
   
  if (siem_title === "MaxPatrol 10") {
     makeSideBarGreatAgain();
-    let navbaritem = $(".mc-navbar-logo");
+    let navbaritem = $(".mc-navbar-logo", root);
     navbaritem.append(`<img class="monkeydropbtn" width="32" height="32" src="${icondataurl}" alt="" />`);
-    $(".monkeydropbtn")
+    $(".monkeydropbtn", root)
     .delay(100).fadeTo(100,0.5)
     .delay(100).fadeTo(100,1)
     .delay(100).fadeTo(100,0.5)
@@ -315,7 +338,7 @@ function extractLast( term ) {
 
 let observer = new MutationObserver(async mutations => {
   for(let mutation of mutations) {
-     //console.log(mutation);
+     // console.log(mutation);
       // Добавим поле input для того, чтобы пользователь мог ввести описание для добавленного индикатора
       // (само добавление данных реализовано в xhr_override.js)        
       // TODO: добавить проверку параметра в настройках
@@ -764,7 +787,7 @@ async function getdata(siemUrl, filter, count, callback, outputelemsuffix="", tt
                   $(".loading").remove();
                   loading.remove();
                   let events = msg['events'];
-                  callback(events, outputelemsuffix);
+                  callback(events, outputelemsuffix, "");
               },
               error: function(msg)
               {
@@ -1016,6 +1039,11 @@ function ProcessHandlerNew(addedNode) {
   value_node_span.closest('pt-siem-text-truncate').after(ancestors_branch_icon);
   value_node_span.closest('pt-siem-text-truncate').after(session_tree_icon);
 
+  //siem-text-truncate
+  value_node_span.closest('siem-text-truncate').children(":first").after(descendants_tree_icon);
+  value_node_span.closest('siem-text-truncate').children(":first").after(ancestors_branch_icon);
+  value_node_span.closest('siem-text-truncate').children(":first").after(session_tree_icon);
+
     //одна ветка в дереве предков процесса
     ancestors_branch_icon.click(function (){
       var commandline = getFieldValueFromSidebar("object.process.cmdline");
@@ -1123,7 +1151,13 @@ function ProcessHandlerNew(addedNode) {
       gtfrom = ttimeto - 86400;
       gtto = ttimeto;
       if(processStartMsgid === '1' || processStartMsgid === '4688') {
-        getdata(siemUrl, `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, count, processTree, "", ttimeto - 86400, ttimeto);
+        getdata(siemUrl, 
+          `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, 
+          count, 
+          processTree, 
+          "", 
+          ttimeto - 86400, 
+          ttimeto);
       }
       else {
         getdata(siemUrl,
@@ -1214,9 +1248,15 @@ function ProcessHandlerNew(addedNode) {
  * @returns {str} значение поля
  */
 function getFieldValueFromSidebar(fieldName) {
-
   /* 27.1 */
-  let tmp = $(`mc-dt:contains("${fieldName}")`);
+  let root = document.body;
+  let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+  if(ips_shell_remote_app_elem.length === 1) {
+    /* 27.3 */
+    let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+    root = siem_core[0].shadowRoot;
+  }
+  let tmp = $(`mc-dt:contains("${fieldName}")`, root);
   if (tmp.length === 1) {
     let fieldValue = tmp.next().text().trim('↵');
     return fieldValue;
@@ -1226,6 +1266,8 @@ function getFieldValueFromSidebar(fieldName) {
       let fieldValue = tmp.next().text().trim('↵');
       return fieldValue;
   }
+
+  /* Good old versions */
 
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
@@ -1247,8 +1289,16 @@ function getFieldValueFromSidebar(fieldName) {
  * @returns {str} время в виде строки вида 20.06.2023 13:18:49
  */
 function getTimeValueFromSidebar() {
+  /* 27.1 */
+  let root = document.body;
+  let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+  if(ips_shell_remote_app_elem.length === 1) {
+    /* 27.3 */
+    let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+    root = siem_core[0].shadowRoot;
+  }
   /* 27.2 */
-  let newest_sidebar_header = $("div.layout-padding-no-left.mc-sidebar-header__title.flex");
+  let newest_sidebar_header = $("div.layout-padding-no-left.mc-sidebar-header__title.flex", root);
   if(newest_sidebar_header.length === 1) {
     let time = newest_sidebar_header.text().trim("↵");
     time = time.replace(",","");
@@ -1256,7 +1306,7 @@ function getTimeValueFromSidebar() {
     return time;
   }
   /* 27.1 */
-  let new_sidebar_header = $("div.layout-padding_no-left.mc-sidebar-header__title.flex");
+  let new_sidebar_header = $("div.layout-padding_no-left.mc-sidebar-header__title.flex", root);
                                   
   if(new_sidebar_header.length === 1) {
     let time = new_sidebar_header.text().trim("↵");
@@ -1264,6 +1314,7 @@ function getTimeValueFromSidebar() {
     return time;
   }
 
+  /* Good old versions */
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
     let shadowRoot = legacy_events_page[0].shadowRoot;
@@ -1780,6 +1831,10 @@ async function shareableLinkIconAdd(addedNode){
       /* 27.1 */
       event_icon_type = $('pt-siem-event-icon-type', sidebar);
     }
+    if (event_icon_type.length === 0) {
+      /* 27.3 */
+      event_icon_type = $('siem-event-icon-type', sidebar);
+    }
     AddGetShareableEventLinkIcon(event_icon_type);
   },
   500,
@@ -1878,14 +1933,19 @@ function AddGetShareableEventLinkIcon(addedNode) {
     let link = `${siemUrl}/#/events/view?where=uuid=%22${uuid}%22&period=range&start=${ttimeto}&end=${ttimeto}`;
     console.log(link);
     navigator.clipboard.writeText(link);
+    
+    let searchNode = document.body;
+    let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+    if(ips_shell_remote_app_elem.length === 1) {
+      /* 27.3 */
+      let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+      searchNode = siem_core[0].shadowRoot;
+    }
     let legacy_events_page = $("legacy-events-page");
-    let searchNode;
     if(legacy_events_page.length === 1) {
       searchNode = legacy_events_page[0].shadowRoot;
     }
-    else {
-      searchNode = document;
-    }
+
     let icon = $(".shareableeventlink", searchNode);
     $('<div>Ссылка в буфере обмена...</div>').insertAfter(icon).show().delay(500).fadeOut();
   })
@@ -1911,9 +1971,14 @@ async function popup_event_handler() {
             params[x.name] = $(`div[title=\"${x.name}\"] + div > div > div:first`, applicationNode).text().trim('↵');
         });
       }
-      else { /* 27.1 */
-        fields.forEach( x => {
-            let tmp = $(`mc-dt:contains("${x.name}")`);
+      else {
+        let ips_shell_remote_app = $("ips-shell-remote-app");
+        if( ips_shell_remote_app.length === 1) { /* 27.3 */
+          let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+          let siem_core = $("siem-core", shadowRootOne);
+          let shadowRootTwo = siem_core[0].shadowRoot;
+          fields.forEach( x => {
+            let tmp = $(`mc-dt:contains("${x.name}")`, shadowRootTwo);
             params[x.name] = "";
             if (tmp.length === 1) {
                 params[x.name] = tmp.next().text().trim('↵');
@@ -1923,7 +1988,23 @@ async function popup_event_handler() {
                 params[x.name] = tmp.next().text().trim('↵');
             }
         });
+        }
+        else { /* 27.1 */ //TODO: надо проверить для 27.2 и обработать напильником по месту
+          fields.forEach( x => {
+              let tmp = $(`mc-dt:contains("${x.name}")`);
+              params[x.name] = "";
+              if (tmp.length === 1) {
+                  params[x.name] = tmp.next().text().trim('↵');
+              }
+              else if (tmp.length > 1){
+                  tmp = tmp.filter( function() {return $(this).text() === " " + x.name + " "});
+                  params[x.name] = tmp.next().text().trim('↵');
+              }
+          });
+        }
       }
+
+     
       params['time'] = getTimeValueFromSidebar();
   }
   catch(err)

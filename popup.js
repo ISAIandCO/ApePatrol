@@ -227,7 +227,7 @@ function countGroupBy(siemUrl, filter, group, callback)
         "timeFrom": tfrom,
         "timeTo": tto,
         "filter": `${filter}`,
-        "fields": [`${group}`, `subject.name`],
+        "fields": [`${group}`, `subject.account.name`],
         "top": null
     }
     let loading = document.createElement("div");
@@ -256,7 +256,7 @@ function countGroupBy(siemUrl, filter, group, callback)
                         $("#output").empty();
                         count = sessionProcesses;
                         let filter = `event_src.host = "${event_src_host}" ` + 
-                        `and msgid = "${processStartMsgid}" and datafield1 = ${session} and (correlation_name = null) `; 
+                        `and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null) `; 
                         
                         getdata(siemUrl, filter, count, callback, session);
                     })
