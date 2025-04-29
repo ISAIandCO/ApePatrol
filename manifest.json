@@ -2,8 +2,8 @@
 	"manifest_version": 3,
 	"name": "SiemMonkey",
 	"description": "SiemMonkey for MaxPatrol SIEM",
-	"version": "2.3",
-	"version_name": "2.3 (27.1 beta)",
+	"version": "2.27.3",
+	"version_name": "2.27.3 (27.3 beta)",
 	"icons": { 
 		"16": "img/icon16.png",
 		"48": "img/icon48.png",
