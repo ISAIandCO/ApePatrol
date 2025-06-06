@@ -853,6 +853,11 @@ function ProcessHandler(addedNode) {
 
       let time = getTimeValueFromSidebar();
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        /* in case if you use English-localized SIEM TODO: Вынести в отдельную нормальную функцию */
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
+      
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 3600; // на 1 час вперёд
 
@@ -929,6 +934,9 @@ function ProcessHandler(addedNode) {
       count = 1000;
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000;
 
@@ -992,6 +1000,9 @@ function ProcessHandler(addedNode) {
       let time = getTimeValueFromSidebar();
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 86400; // на сутки вперед
 
@@ -1076,6 +1087,9 @@ function ProcessHandlerNew(addedNode) {
 
       let time = getTimeValueFromSidebar();
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 3600; // на 1 час вперёд
 
@@ -1145,6 +1159,9 @@ function ProcessHandlerNew(addedNode) {
       count = 1000;
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000;
 
@@ -1211,6 +1228,9 @@ function ProcessHandlerNew(addedNode) {
       let time = getTimeValueFromSidebar();
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 86400; // на сутки вперед
 
@@ -1859,6 +1879,10 @@ function AddDownloadNormalizedSubeventsIcon(addedNode) {
     let time = getTimeValueFromSidebar();
     
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
+
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1888,6 +1912,9 @@ function AddDownloadNormalizedIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1901,6 +1928,9 @@ function AddDownloadNormalizedIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1928,6 +1958,9 @@ function AddGetShareableEventLinkIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime(); 
     let link = `${siemUrl}/#/events/view?where=uuid=%22${uuid}%22&period=range&start=${ttimeto}&end=${ttimeto}`;
