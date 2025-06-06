@@ -450,6 +450,7 @@ let observer = new MutationObserver(async mutations => {
             //   await uuidChange(addedNode);
             // }
             await shareableLinkIconAdd(addedNode);
+            await uuidChangeProcessAssets(addedNode);
           } 
         }
 
@@ -1983,6 +1984,181 @@ function AddGetShareableEventLinkIcon(addedNode) {
     $('<div>Ссылка в буфере обмена...</div>').insertAfter(icon).show().delay(500).fadeOut();
   })
 }
+
+/**
+ * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+ * @param {*} addedNode добавляемый элемент на страницу
+ */
+async function uuidChangeProcessAssets(addedNode){
+  // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+  setTimeout(function(addedNode){
+    // uuid меняется при клике на каждое новое событие, т.к. он уникален
+    // это можно использоать для добавления/удаления элементов при необходимости
+    value_node = $(addedNode).next();
+    //let value_node_span = $("pdql-fast-filter", addedNode);
+  
+
+
+    const value_node_span_observer = new MutationObserver(mutationList => {
+      let subject_name = $(mutationList[0].target.parentNode)
+      console.log(subject_name);
+      setTimeout(function(changedElement){
+        ProcessAssets(changedElement);
+
+
+      },
+      100,
+      subject_name)
+    });
+
+   // value_node_span_to_observe = 
+    value_node_span_to_observe = $(addedNode).next();
+    if (value_node_span_to_observe) {
+      value_node_span_observer.observe(value_node_span_to_observe[0],{childList: true, subtree: true, characterDataOldValue: true,});
+    }
+
+    ProcessAssets(addedNode);
+
+
+  },
+  100,
+  addedNode);
+}
+
+function ProcessAssets(addedNode) {
+  let sidebar = $(addedNode).closest('mc-sidebar');
+  // список полей активов, для которых надо получать описание и ссылку на XDR
+  let asset_fields = ['event_src.asset', 'src.asset', 'dst.asset'];
+  let siemUrl = origin;
+  asset_fields.forEach((asset_field) => {
+
+
+    //let asset_element = $(`div[title=\"${asset_field}\"]`, sidebar);
+    let asset_element;
+    let tmp = $(`mc-dt:contains("${asset_field}")`, sidebar);
+    if (tmp.length === 1) {
+      asset_element = tmp;
+    }
+    else if (tmp.length > 1){
+        tmp = tmp.filter( function() {return $(this).text() === " " + asset_field + " "});
+        asset_element = tmp;
+    }
+
+    //let asset_element = $(`mc-dt:contains("${asset_field}")`);
+    let value_node = asset_element.next();
+    //let asset_id = $("div.ng-binding.ng-isolate-scope.ng-hide", value_node).text(); //там написан asset_id в виде uuid
+    let asset_name = value_node.text();
+    // console.log(asset_id);
+
+    if(asset_name != "") {
+      enrichEventCardWithAssetInfo(asset_name, siemUrl, value_node);
+    }
+  });
+}
+
+function enrichEventCardWithAssetInfo(src_asset_name, siemUrl, value_node) {
+  //Запрос по активам для получения описания и идентификатора агента XDR
+  // let request_params = {
+  //   "pdql": "select(Host.@Description as description, Host.Softs<XDRAgent>.AgentID AS xdrAgentId) ",
+  //   "additionalFilterParameters": {
+  //     "assetIds": [src_asset_id]
+  //   },
+  //   "includeNestedGroups": false,
+  //   "utcOffset": "+03:00"
+  // };
+
+  let request_params = {
+    "pdql": `filter(Host[@Name = '${src_asset_name}']) |select(Host.@Description as description, Host.Softs<XDRAgent>.AgentID AS xdrAgentId)`,
+    "additionalFilterParameters": {
+      //
+    },
+    "includeNestedGroups": false,
+    "utcOffset": "+03:00"
+  };
+
+  $.ajax({
+    type: "POST",
+    url: `${siemUrl}/api/assets_temporal_readmodel/v1/assets_grid`,
+    dataType: "json",
+    contentType: "application/json; charset=utf-8",
+    data: JSON.stringify(request_params),
+    success: function (msg) {
+      // console.log(msg);
+      let pdqlToken = msg['token'];
+      let pdqlTokenEncoded = encodeURIComponent(pdqlToken);
+      $.ajax({
+        type: "GET",
+        url: `${siemUrl}/api/assets_temporal_readmodel/v1/assets_grid/data?limit=1&pdqlToken=${pdqlTokenEncoded}`,
+        success: async function (msg) {
+          let agetId = msg['records'][0]['xdrAgentId'];
+          let xdr_div = $('<span>').addClass('pt-text-overflow').addClass('monkey-asset-edr-info');
+
+          let xdr_i = $('<i>')
+          .addClass('pt-icons')
+          .addClass('flex-none')
+          .addClass('monkeymagicicon');
+          
+          if(agetId != null) {
+            let agent_info = await DiscoverEdrAgentByHash(agetId);
+            let agent_title = agent_info['data']['agent']['info']['tags'];
+            agent_title += "\n" + "Сервер агентов: " + agent_info['data']['service']['name'];
+            agent_title += "\n" + "Группа агентов: " + agent_info['data']['group']['info']['name']['ru'];
+
+
+            xdr_i.addClass('pt-icons-protection-active_16')
+                 .attr('title', 'Открыть в новой вкладке страницу агента EDR' + '\n\n'+ agent_title);
+            xdr_div.click(async function(event){
+              console.log(`XDR agent ID: ${agetId}`);
+                let service = agent_info['data']['service']['hash'];
+                let hash = agent_info['data']['agent']['hash'];
+                let agent_url = `${siemUrl}/#/edr/services/${service}/agents/${hash}`
+              
+              window.open(agent_url);
+            });
+          }
+          else{
+            xdr_i.addClass('pt-icons-protection-off_16')
+                 .attr('title', 'На узле не установлен агент EDR');
+          }
+
+          xdr_div.append(xdr_i);
+          //let value_node_span = $("asset-card-link span.mc-link", value_node);
+          let value_node_span = $("span .mc-link__text.ng-star-inserted", value_node);
+          value_node_span.next(".monkey-asset-edr-info").remove();
+          value_node_span.after(xdr_div);
+
+          let description = msg['records'][0]['description'];
+          // console.log(`Asset description: ${description}`);
+          let description_div = $('<span>').text(description)
+                                           .attr('title', description)
+                                           .addClass('pt-text-overflow');
+          xdr_div.append(description_div);
+        },
+        error: function (msg) {
+          console.log('не повезло, что-то сломалось 2');
+        }
+      });
+    },
+    error: function (msg) {
+      console.log('что-то опять пошло не так 2');
+    }
+  });
+}
+
+async function DiscoverEdrAgentByHash(hash) {
+  // https://<siem>/api/edr/v1/agents/b84b8efbf5042f050c85a58061f1fd1d/discovery
+  siemUrl = origin;
+  var request = $.ajax
+  (
+      {
+          type: "GET",
+          url: `${siemUrl}/api/edr/v1/agents/${hash}/discovery`,
+      }
+  );
+  response = await request;
+  return response;
+}
+
 
 async function popup_event_handler() {
   let applicationNode = null;
