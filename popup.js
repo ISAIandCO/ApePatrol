@@ -406,6 +406,110 @@ async function onPageDetailsReceived(details) {
         }
     });
 
+    $.ajax({
+        url: `${siemUrl}/api/v2/events/filters_hierarchy`,
+        method: 'GET',
+        success: async function(data) {
+            // Рекурсивная функция для поиска элемента по имени
+            function findElementByName(roots, name) {
+                for (let i = 0; i < roots.length; i++) {
+                    if (roots[i].name === name) {
+                        return {"id": roots[i].id, "filters": roots[i].children};
+                    }
+                    if (roots[i].children) {
+                        let result = findElementByName(roots[i].children, name);
+                        if (result) {
+                            return result;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // Поиск элемента с названием "Фильтры с параметрами"
+            let mainTemplateFilterFolder = findElementByName(data.roots, "Фильтры с параметрами");
+
+            if (mainTemplateFilterFolder) {
+                console.log("ID элемента 'Фильтры с параметрами':", mainTemplateFilterFolder);
+                mainTemplateFilterFolder.filters.forEach(async (filter) => {
+                    try {
+                        pdqlQuery = await getFilterPdqlQuery(filter.id)
+                        let filterDescription = filter.name;
+                        if (filter.name === '🐵(SiemMonkey temp filter)🐵') {
+                            return;
+                        }
+                        console.log("pdqlQuery:", pdqlQuery);
+                        let pdqlQueryEvaluated = template(pdqlQuery, details.params);
+                        let description = template_descr(filterDescription, details.params);
+                        f = $("<div>").html(description)
+                        .attr('title', pdqlQueryEvaluated) // фильтр будет видно в качестве тултипа
+                        .click(
+                            async function() {
+                                console.log('Пуньк!');
+                                console.log(filter);
+                                let oldFilterName = filter.name;
+                                //let newFiletrName = oldFilterName + " (SiemMonkey temp filter)"
+                                let newFilterName = "🐵(SiemMonkey temp filter)🐵"
+                                // найти и удалить старый временный магический обезьяний фильтр
+                                let monkeyMagicTempFilterId = await getFilterIdObjectByName(newFilterName);
+                                console.log(monkeyMagicTempFilterId);
+                                await deleteFilter(monkeyMagicTempFilterId);
+                                
+                                //console.log(pdqlQueryEvaluated);
+                                console.log(pdqlQueryEvaluated);
+
+
+                                let newFilterId = "";
+                                try {
+                                    newFilterId = await saveFilter(mainTemplateFilterFolder.id, newFilterName, pdqlQueryEvaluated);
+                                } catch (error) {
+                                     if (error.status === 400) {
+                                        try {
+                                            const responseText = error.responseText;
+                                            const responseJson = JSON.parse(responseText);
+                                            if (responseJson.errors && responseJson.errors.length > 0) {
+                                                const errorMessage = responseJson.errors[0].error.message;
+                                                // Events.Filters.DuplicateFilterNames.Error
+                                                const errorType = responseJson.errors[0].error.type;
+                                                if (errorType === 'Events.Filters.DuplicateFilterNames.Error'){
+                                                    const filterId = responseJson.errors[0].error.filterId;
+                                                    if (filterId) {
+                                                        await deleteFilter(filterId);
+                                                        newFilterId = await saveFilter(mainTemplateFilterFolder.id, newFilterName, pdqlQueryEvaluated);
+                                                    }
+                                                }
+                                            }
+                                        } catch (parseError) {
+                                            console.error("Ошибка при парсинге ответа:", parseError);
+                                        }
+                                    }
+                                }
+
+                                chrome.tabs.create({
+                                    //TODO: придумать, как быть с временным периодом
+                                    url: `${siemUrl}#/events/view?period=1h&groupId=-1&filterId=${newFilterId}`
+                                });
+                            }
+                        )
+                        $("#filters").append(f);
+
+                        console.log(pdqlQueryEvaluated);
+                    }
+                    catch (ex) {
+                        console.error(ex);
+                    }
+                });
+
+
+
+            } else {
+                console.log("Элемент с названием 'Фильтры с параметрами' не найден.");
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error("Ошибка при выполнении запроса:", status, error);
+        }
+    });
 
     $("#datepickerFrom").datetimepicker({
         dateFormat: "yy-mm-dd",
@@ -640,3 +744,117 @@ chrome.runtime.onMessage.addListener(
 }); 
 
 
+async function getFilterPdqlQuery(filterId) {
+    try {
+        const response = await $.ajax({
+            url: `${siemUrl}/api/v3/events/filters/${filterId}?withRemoved=false`,
+            method: 'GET'
+        });
+
+        if (response && response.pdqlQuery) {
+            return response.pdqlQuery;
+        } else {
+            throw new Error("Поле pdqlQuery не найдено в ответе");
+        }
+    } catch (error) {
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+async function getFilter(filterId) {
+    try {
+        const response = await $.ajax({
+            url: `${siemUrl}/api/v3/events/filters/${filterId}?withRemoved=false`,
+            method: 'GET'
+        });
+
+        if (response) {
+            return response;
+        } else {
+            throw new Error("Поле pdqlQuery не найдено в ответе");
+        }
+    } catch (error) {
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+async function deleteFilter(filterId) {
+    try {
+        const response = await $.ajax({
+            url: `${siemUrl}/api/v3/events/filters/${filterId}`,
+            method: 'DELETE'
+        });
+    } catch (error) {
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+async function saveFilter(folderId, name, pdqlQuery) {
+    try {
+        const response = await $.ajax({
+            url: `${siemUrl}/api/v3/events/filters`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                name: name,
+                folderId: folderId,
+                pdqlQuery: pdqlQuery
+            })
+        });
+
+        if (response && response.id) {
+            return response.id;
+        } else {
+            throw new Error("Поле id не найдено в ответе");
+        }
+    } catch (error) {
+       
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+async function updateFilter(filterId, name, folderId, pdqlQuery) {
+    try {
+         const response = await $.ajax({
+            url: `${siemUrl}/api/v3/events/filters/${filterId}`,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                name: name,
+                folderId: folderId,
+                pdqlQuery: pdqlQuery
+            })
+        });
+    } catch (error) {
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+
+async function getFilterIdObjectByName(filterName) {
+    try {
+        const response = await $.ajax({
+            url: `${siemUrl}/api/v2/events/filters_hierarchy`,
+            method: 'GET'
+        });
+        let filterId = findElementByName(response.roots, filterName);
+        return filterId;
+    } catch (error) {
+        throw new Error(`Ошибка при выполнении запроса: ${error}`);
+    }
+}
+
+function findElementByName(roots, name) {
+    for (let i = 0; i < roots.length; i++) {
+        if (roots[i].name === name) {
+            return roots[i].id;
+        }
+        if (roots[i].children) {
+            let result = findElementByName(roots[i].children, name);
+            if (result) {
+                return result;
+            }
+        }
+    }
+    return null;
+}

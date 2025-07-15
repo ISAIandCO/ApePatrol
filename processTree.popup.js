@@ -159,6 +159,7 @@ async function processTreeBranch(pre_events, outputelemsuffix="")
             {
                 elemClass += " alarm"; 
             }
+            // commandline = x[commandlineField] === x['object.process.meta'] ? x[commandlineField]:x['object.process.meta']; 
             let elem = {
                 "id":x['tree_id'],
                 "parent":parent,
@@ -219,7 +220,7 @@ async function processTreeBranch(pre_events, outputelemsuffix="")
         treeBranchEvents.push(pre_events[0]);
         let event_src_host = pre_events[0]['event_src.host'];
         let processStartMsgid = pre_events[0]['msgid'];
-        if('object.process.guid' in pre_events[0]) {
+        if('object.process.guid' in pre_events[0] && pre_events[0]['object.process.guid'] !== null) {
             let parentProcessPid = pre_events[0]['object.process.parent.guid'];
             getdata(siemUrl,
                 `event_src.host = "${event_src_host}"` + 
@@ -229,14 +230,26 @@ async function processTreeBranch(pre_events, outputelemsuffix="")
                 count,
                 processTreeBranch);
         }
-        else {
+        else if (processStartMsgid === '4688') {
             let parentProcessPid = pre_events[0]['object.process.parent.id'];
             let parentProcessName = pre_events[0]['object.process.parent.name'];
             getdata(siemUrl,
                 `event_src.host = "${event_src_host}"` + 
                 ` and msgid = "${processStartMsgid}"` + 
-                ` and object.id = "${parentProcessPid}"` + 
-                ` and object.name = "${parentProcessName}"` +
+                ` and object.process.id = "${parentProcessPid}"` + 
+                ` and object.process.name = "${parentProcessName}"` +
+                ` and generator.type != 'correlationengine'`,
+                count,
+                processTreeBranch);
+        }
+        else if (processStartMsgid === 'execve') {
+            // если linux
+            let parentProcessPid = pre_events[0]['object.process.parent.id'];
+            getdata(siemUrl,
+                `event_src.host = "${event_src_host}"` + 
+                ` and msgid = "${processStartMsgid}"` + 
+                ` and object.process.id = "${parentProcessPid}"` + 
+                ` and status = 'success'` +
                 ` and generator.type != 'correlationengine'`,
                 count,
                 processTreeBranch);

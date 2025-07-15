@@ -441,14 +441,14 @@ let observer = new MutationObserver(async mutations => {
 
           if(addedNode.innerHTML ===  " uuid ") {
             // TODO: 
-            // if('options' in options &&
-            //  'dont_show_save_event_icons' in options.options && 
-            //  options.options.dont_show_save_event_icons == true) {
-            //   ; //если задана опция "Не показывать кнопки сохранения JSON события", то и не показываем
-            // }
-            // else {
-            //   await uuidChange(addedNode);
-            // }
+            if('options' in options &&
+             'dont_show_save_event_icons' in options.options && 
+             options.options.dont_show_save_event_icons == true) {
+              ; //если задана опция "Не показывать кнопки сохранения JSON события", то и не показываем
+            }
+            else {
+              await uuidChange(addedNode);
+            }
             await shareableLinkIconAdd(addedNode);
             await uuidChangeProcessAssets(addedNode);
           } 
@@ -763,7 +763,7 @@ async function getdata(siemUrl, filter, count, callback, outputelemsuffix="", tt
             let params = {"filter":
                             {"select": fields,
                             "where":`${filter}`,
-                            "orderBy":[{"field":"time","sortOrder":"descending"}],
+                            "orderBy":[{"field":"time","sortOrder":"ascending"}],
                             "groupBy":[],
                             "aggregateBy":[],
                             "distributeBy":[],
@@ -1103,7 +1103,7 @@ function ProcessHandlerNew(addedNode) {
       treeBranchEvents = [];
 
       // Если текущее событие - событие запуска процесса, запускаем процесс построения дерева
-      if(msgid === '1' || msgid === '4688') {
+      if(msgid === '1' || msgid === '4688' || msgid === 'execve') {
         getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranch, "", ttimeto - 86400, ttimeto);
       }
       // Иначе ищем доступными средствами соответсвующее событие запуска процесса 
@@ -1157,7 +1157,7 @@ function ProcessHandlerNew(addedNode) {
       
       // ограничение по числу процессов
       // TODO: придумать способ задавать этот параметр при необходимости
-      count = 1000;
+      count = 5000;
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
       if(!timeParsed._isValid) {
@@ -1168,9 +1168,14 @@ function ProcessHandlerNew(addedNode) {
 
       gtfrom = ttimeto - 86400;
       gtto = ttimeto;
-      if(processStartMsgid === '1' || processStartMsgid === '4688') {
+      if(processStartMsgid === '1' || processStartMsgid === '4688' || processStartMsgid === 'execve') {
+        let pdqlfilter = "";
+        if (session === "" || session == null)
+          pdqlfilter = `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and (correlation_name = null)`;
+        else
+          pdqlfilter = `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`;
         getdata(siemUrl, 
-          `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, 
+          pdqlfilter, 
           count, 
           processTree, 
           "", 
@@ -1793,51 +1798,112 @@ async function ipfieldChangeObserver(addedNode, fieldname){
 }
 
 
+// /**
+//  * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+//  * @param {*} addedNode добавляемый элемент на страницу
+//  */
+// async function uuidChange(addedNode){
+//   // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+//   setTimeout(function(addedNode){
+//     // uuid меняется при клике на каждое новое событие, т.к. он уникален
+//     // это можно использоать для добавления/удаления элементов при необходимости
+//     let value_node_span = $("pdql-fast-filter", addedNode);
+  
+//     // нарисовать иконки при изменении значения поля uuid
+//     const value_span_observer = new MutationObserver(mutationList =>
+//     // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+//       setTimeout(function(changedElement){
+//         let sidebar = changedElement.closest('mc-sidebar');
+//         // нужно убрать старую иконку загрузки сабивентов
+//         $('.downloadsubeventsnormalizedicon').remove();
+//         // и нарисовать новую, если есть поле correlation_name
+//         let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+//         if(correlation_name.length > 0) {
+//           AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon'));
+//         }
+//       },
+//       500,
+//       value_node_span)
+//     );
+
+//     value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
+//     if (value_node_to_observe) {
+//       value_span_observer.observe(value_node_to_observe,{childList: true, subtree: true, characterDataOldValue: true,});
+//     }
+
+//     // нарисовать иконки загрузки событий при появлении uuid первый раз на странице
+//     let sidebar = $(addedNode).closest('mc-sidebar');
+//     let event_icon_type = $('event-icon-type', sidebar);
+//     let correlation_name = $("div[title=\"correlation_name\"]", sidebar);
+//     if(correlation_name.length > 0) {
+//       AddDownloadNormalizedSubeventsIcon(event_icon_type.next());
+//     }
+//     AddDownloadNormalizedIcon(event_icon_type.next());
+//   },
+//   500,
+//   addedNode);
+// }
+
+
 /**
- * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+ * Добавить обработчик появления значения элемента uuid в правой панели для размещения дополнительных иконок
  * @param {*} addedNode добавляемый элемент на страницу
  */
 async function uuidChange(addedNode){
   // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
   setTimeout(function(addedNode){
-    // uuid меняется при клике на каждое новое событие, т.к. он уникален
-    // это можно использоать для добавления/удаления элементов при необходимости
-    let value_node_span = $("pdql-fast-filter", addedNode);
-  
+
     // нарисовать иконки при изменении значения поля uuid
     const value_span_observer = new MutationObserver(mutationList =>
     // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
       setTimeout(function(changedElement){
-        let sidebar = changedElement.closest('mc-sidebar');
+        let sidebar = $(changedElement).closest('mc-sidebar');
         // нужно убрать старую иконку загрузки сабивентов
-        $('.downloadsubeventsnormalizedicon').remove();
+        $('.downloadsubeventsnormalizedicon', sidebar).remove();
         // и нарисовать новую, если есть поле correlation_name
-        let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+        let correlation_name = getFieldValueFromSidebar("correlation_name");
         if(correlation_name.length > 0) {
-          AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon'));
+          AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon', sidebar));
         }
       },
       500,
-      value_node_span)
+      mutationList[0].addedNodes[0])
     );
 
-    value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
-    if (value_node_to_observe) {
-      value_span_observer.observe(value_node_to_observe,{childList: true, subtree: true, characterDataOldValue: true,});
+    //value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
+    value_node_to_observe = $(addedNode).next("mc-dd");
+    if (value_node_to_observe.length != 0) {
+      value_span_observer.observe(value_node_to_observe[0], {childList: true, subtree: true, characterDataOldValue: true,});
     }
 
-    // нарисовать иконки загрузки событий при появлении uuid первый раз на странице
+
     let sidebar = $(addedNode).closest('mc-sidebar');
     let event_icon_type = $('event-icon-type', sidebar);
-    let correlation_name = $("div[title=\"correlation_name\"]", sidebar);
-    if(correlation_name.length > 0) {
-      AddDownloadNormalizedSubeventsIcon(event_icon_type.next());
+    if (event_icon_type.length === 0) {
+      /* 27.1 */
+      event_icon_type = $('pt-siem-event-icon-type', sidebar);
     }
-    AddDownloadNormalizedIcon(event_icon_type.next());
+    if (event_icon_type.length === 0) {
+      /* 27.3 */
+      event_icon_type = $('siem-event-icon-type', sidebar);
+    }
+  
+    $('.downloadsubeventsnormalizedicon', sidebar).remove();
+    // let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+    let correlation_name = getFieldValueFromSidebar("correlation_name");
+    if(correlation_name.length > 0) {
+          AddDownloadNormalizedSubeventsIcon(event_icon_type);
+    }
+    AddDownloadNormalizedIcon(event_icon_type);
+
+
+    // AddGetShareableEventLinkIcon(event_icon_type);
   },
   500,
   addedNode);
 }
+
+
 
 /**
  * Добавить обработчик появления значения элемента uuid в правой панели для размещения дополнительных иконок
