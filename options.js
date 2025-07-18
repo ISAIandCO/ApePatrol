@@ -20,6 +20,10 @@ function save_options() {
   let disable_agg_sort = document.getElementById('disable_agg_sort').checked;
   let add_input_for_IOCs_description = document.getElementById('add_input_for_IOCs_description').checked;
   let disable_edr_integration = document.getElementById('disable_edr_integration').checked;
+  let enable_sec_ai_assistant = document.getElementById('enable_sec_ai_assistant').checked;
+  let llm_api_endpoint = document.getElementById('llm_api_endpoint').value;
+  let llm_api_key = document.getElementById('llm_api_key').value;
+  let llm_api_model_name = document.getElementById('llm_api_model_name').value;
   let iplinks = [];
   $(".iplink").each(function(index){
       let name = $(".iplink_name", $(this)).val();
@@ -36,7 +40,21 @@ function save_options() {
   });
  
 
-  let options = {vt_api_key, iplinks, hashlinks, dont_show_save_event_icons, dont_show_desc_rules, disable_agg_sort, add_input_for_IOCs_description, disable_edr_integration};
+  let options = {
+    vt_api_key,
+    iplinks,
+    hashlinks,
+    dont_show_save_event_icons,
+    dont_show_desc_rules,
+    disable_agg_sort,
+    add_input_for_IOCs_description,
+    disable_edr_integration,
+    enable_sec_ai_assistant,
+    llm_api_endpoint,
+    llm_api_key,
+    llm_api_model_name
+  };
+
   chrome.storage.sync.set(
     {options},
     function() {
@@ -91,6 +109,34 @@ function restore_options() {
       }
       else{
         document.getElementById('disable_edr_integration').checked = false;
+      }
+
+      if(items.options.hasOwnProperty('enable_sec_ai_assistant')){
+        document.getElementById('enable_sec_ai_assistant').checked = items.options['enable_sec_ai_assistant'];
+      }
+      else{
+        document.getElementById('enable_sec_ai_assistant').checked = false;
+      }
+      
+      if(items.options.hasOwnProperty('llm_api_endpoint')){
+        document.getElementById('llm_api_endpoint').value = items.options['llm_api_endpoint'];
+      }
+      else{
+        document.getElementById('llm_api_endpoint').value = "";
+      }
+
+      if(items.options.hasOwnProperty('llm_api_key')){
+        document.getElementById('llm_api_key').value = items.options['llm_api_key'];
+      }
+      else{
+        document.getElementById('llm_api_key').value = false;
+      }
+
+      if(items.options.hasOwnProperty('llm_api_model_name')){
+        document.getElementById('llm_api_model_name').value = items.options['llm_api_model_name'];
+      }
+      else{
+        document.getElementById('llm_api_model_name').value = false;
       }
       
       iplinks = items.options['iplinks'];

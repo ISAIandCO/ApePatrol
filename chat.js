@@ -1,4 +1,16 @@
-const LLM_API_ENDPOINT = "http://localhost:3503/v1/chat/completions";
+//    Copyright 2024 Anton Kutepov, Konstantin Grishchenko, Security Experts Community
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//        http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
 
 const chatToggle = document.getElementById('chat-toggle');
 const chatWidget = document.getElementById("chat-widget");
@@ -38,7 +50,20 @@ function addChatMessage(sender, message) {
     messageHeader.textContent = sender + ":";
     const messageBody = document.createElement("div");
     messageBody.classList.add("chat-message-body");
-    messageBody.textContent = message;
+
+    // Иногда в ответе LLM есть, куски, обрамленные двойными звёздочками, выделим их жирным (стиль настраивается с chat.css)
+    const parts = message.split(/\*\*(.*?)\*\*/);
+    parts.forEach((part, index) => {
+        if (index % 2 === 1) {
+            const boldPart = document.createElement("span");
+            boldPart.classList.add("bold-text");
+            boldPart.textContent = part;
+            messageBody.appendChild(boldPart);
+        } else {
+            messageBody.innerHTML += part;
+        }
+    });
+
     messageContainer.appendChild(messageHeader);
     messageContainer.appendChild(messageBody);
     chatMessages.appendChild(messageContainer);
@@ -67,13 +92,14 @@ function sendChatMessage(message) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": `Bearer ${LLM_API_KEY}`
     },
     body: JSON.stringify({
         messages: [ 
-            { "role": "system", "content": "You are a highly skilled and experienced cybersecurity assistant. Your answers are very precise and well-researched." },
+            { "role": "system", "content": "You are a highly skilled and experienced cybersecurity assistant. Your answers are very precise and well-researched. After generating answer on my questions you must translate them into formal Russian language. Return only translated version of your answer without English source." },
             { "role": "user", "content": `This is JSON with event log data:${cleaned_event}.\n${message}` }
         ],
-      max_tokens: -1,
+      model: LLM_API_MODEL_NAME,
       temperature: 0.2,
       stop: "###"
     }),
@@ -90,3 +116,12 @@ function sendChatMessage(message) {
       loadingElement.style.display = "none";
     });
 }
+
+options = getStorageData('options');
+console.log(options);
+options.then((data) => {
+    console.log(data);
+    LLM_API_ENDPOINT = data.options['llm_api_endpoint'];
+    LLM_API_KEY = data.options['llm_api_key'];
+    LLM_API_MODEL_NAME = data.options['llm_api_model_name'];
+});

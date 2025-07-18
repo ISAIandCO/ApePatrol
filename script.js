@@ -175,6 +175,12 @@ SearchBananas(
         characterData: true,
         attributes: true,
       });
+      observer2.observe(shadowRootTwo, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
       adoptCSS(shadowRootTwo, "siemMonkey.css");
     }
     
@@ -343,7 +349,8 @@ let observer = new MutationObserver(async mutations => {
       // (само добавление данных реализовано в xhr_override.js)        
       // TODO: добавить проверку параметра в настройках
       if(mutation.target && mutation.target.nodeName == 'IC-PROGRESS-CONTAINER' && 
-        mutation.target.nodeName && mutation.target.parentNode.nodeName == 'PT-SIEM-WHITELISTS-CARD' &&
+        // mutation.target.nodeName && mutation.target.parentNode.nodeName == 'PT-SIEM-WHITELISTS-CARD' &&
+        mutation.target.nodeName && mutation.target.parentNode.nodeName == 'SIEM-WHITELISTS-CARD' &&
         mutation.type === 'attributes'){
         
         // Если в параметрах расширения включена нужная галочка
@@ -363,7 +370,7 @@ let observer = new MutationObserver(async mutations => {
           .attr('user', current_siem_username)
           .attr('token', IOCs_Value_token)
           .attr('placeholder', 'Текст отсюда вносится в description в ТС IOCs_Value');
-          let whitelists_card = $(mutation.target.parentNode.nodeName);
+          let whitelists_card = $(mutation.target.parentNode);
           whitelists_card.prepend(input_node);
         }
       }
@@ -511,11 +518,13 @@ let observer2 = new MutationObserver(async mutations => {
     //   console.log(mutation);
     // }
 
-    if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-MODE-CHANGER') {
+    // if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-MODE-CHANGER') {
+    if(mutation.target && mutation.target.nodeName == 'SIEM-TABLE-MODE-CHANGER') {
       // console.log(mutation)
 
       let parent_node = $(mutation.target.parentNode);
-      let monkey_trash_node = $("#monkey-trash");
+      let table_node = $(mutation.target.parentNode).closest("siem-table-records");
+      let monkey_trash_node = $("#monkey-trash", table_node);
       if (monkey_trash_node.length == 0) {
         let new_i = $("<i>")
         .addClass("mc-btn__icon pt-icons pt-icons-delete_16")
@@ -523,7 +532,9 @@ let observer2 = new MutationObserver(async mutations => {
         .css('cursor', 'pointer')
         .attr('title', 'Удалить выделенную запись');
         new_i.on("click", async function() {
-          let selected_row = $(".ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-focus.ag-row-selected");
+          // let selected_row = $(".ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-focus.ag-row-selected");
+          let table_node = $(this).closest("siem-table-records");
+          let selected_row = $(".ag-row-even.ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-first.ag-row-focus.ag-row-selected", table_node);
           let row_data = []
           let spans = $("span", selected_row);
           spans.each(function() {
@@ -627,7 +638,17 @@ async function removeRowFromTableList(url, data) {
           success: function(response) {
             //console.log(response);
             // "нажать" на кнопку "обновить", чтобы перезагрузить содержимое ТС в UI
-            $("button.mc-button_transparent.ic-refresher__update.mc-icon-button.mc-second").click();
+            let button = $("button.mc-button_transparent.ic-refresher__update.mc-icon-button.mc-second");
+            if (button.length == 0) {
+              let ips_shell_remote_app = $("ips-shell-remote-app");
+              if( ips_shell_remote_app.length === 1) {
+                let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+                let siem_core = $("siem-core", shadowRootOne);
+                let shadowRootTwo = siem_core[0].shadowRoot;
+                button = $("button.mc-button_transparent.mc-icon-button.ic-refresher__update.mc-secondary", shadowRootTwo);
+              }
+            }
+            button.click();
           },
           error: function(error) {
             console.log(error);

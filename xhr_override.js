@@ -29,7 +29,7 @@ function overridedSend(data){
         //console.log(options);    
         if(this.__zone_symbol__xhrURL.includes('/api/edr/assets')) {
           if('options' in options && 'disable_edr_integration' in options.options && options.options.disable_edr_integration == true) {
-              console.log("An apple a day keeps the doctor away :)");
+              //console.log("An apple a day keeps the doctor away :)");
               return;
           }
         }
@@ -38,7 +38,15 @@ function overridedSend(data){
            && 'add_input_for_IOCs_description' in options.options && options.options.add_input_for_IOCs_description == true) {
             let params = JSON.parse(data); 
             let description_node = document.querySelector(".iocs_description");
-            let description = description_node.value;
+            if (description_node == null) {
+              let ips_shell_remote_app_node = document.querySelector("ips-shell-remote-app");
+              let siem_core_node = ips_shell_remote_app_node.shadowRoot.querySelector("siem-core");
+              description_node = siem_core_node.shadowRoot.querySelector(".iocs_description")
+            }
+            let description = ""; // если не найдется элемент с описанием, то используем пустую стоку, чтобы не падать, а то больно
+            if (description_node != null) {
+              description = description_node.value;
+            }
             let user = description_node.getAttribute("user"); //имя пользователя, который внес изменения
             let token = description_node.getAttribute("token"); //token табличного списка, куда будет добавляться описание
             if(this.__zone_symbol__xhrURL.includes(token)) {

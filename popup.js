@@ -730,9 +730,23 @@ async function onPageDetailsReceived(details) {
 let count = "5";
 var event_src_host = "";
 var siemUrl = "";
-$( function() {
-    $( "#tabs" ).tabs();
+
+options = getStorageData('options');
+console.log(options);
+options.then((data) => {
+    console.log(data);
+    enable_sec_ai_assistant = data.options['enable_sec_ai_assistant'];
+    console.log(enable_sec_ai_assistant);
+    let disabled_tabs = [];
+    if(!enable_sec_ai_assistant) {
+        disabled_tabs.push(3);
+        console.log(disabled_tabs);
+    }
+    $( "#tabs" ).tabs({
+        disabled: disabled_tabs
+    });
 });
+
 
 window.addEventListener('load', async function(event){
     const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true});

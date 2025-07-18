@@ -26,7 +26,7 @@
 <br/>
 <label>
   <b>VT API Key:</b>
-  <input type="text" class="inputfield" id="vt-api-key" size=70">
+  <input type="text" class="inputfield" id="vt-api-key" size="70px">
 </label>
 <br/>
 <br/>
@@ -56,6 +56,32 @@
 
 <br/>
 <br/>
+<hr>
+<b>Параметры SEC AI Assistant</b>
+<div>
+  <input type="checkbox" id="enable_sec_ai_assistant" name="enable_sec_ai_assistant">
+  <label for="enable_sec_ai_assistant">Влючить SEC AI Assistant</label>
+</div>
+
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM API ENDPOINT URL:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_endpoint" size=120 placeholder="http://localhost:3503/v1/chat/completions">
+</div>
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM API KEY:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_key" size=120>
+</div>
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM название модели:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_model_name" size=120>
+</div>
+
 <hr>
 <br/>
 <b>Сервисы для получения информации по IP-адресам:</b>

@@ -91,3 +91,15 @@ span.delete_row {
     margin: 0 auto;
     display: inline;
 }
+
+  .input-container {
+    display: flex;
+    align-items: center;
+  }
+  .input-label {
+    margin-right: 10px;
+    width: 140px;
+  }
+  .inputfield {
+    margin-left: auto;
+  }

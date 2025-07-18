@@ -1,3 +1,18 @@
+/*  Copyright 2024 Anton Kutepov, Konstantin Grishchenko, Security Experts Community
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License. */
+
+
 #chat-widget {
     width: 100%;
     z-index: 9999;
@@ -46,7 +61,8 @@
 .chat-message-body {
     margin-top: 5px;
     font-family: 'Roboto','Helvetica Neue',sans-serif;
-    font-size: 14px;
+    font-size: 12px;
+    white-space: pre-wrap;
 }
 
 #chat-input-container {
@@ -106,4 +122,10 @@
     transform: translateX(-50%);
     font-size: 16px;
     color: #525050;
+}
+
+.bold-text {
+    font-weight: bold;
+    font-family: 'Roboto','Helvetica Neue',sans-serif;
+    font-size: 12px;
 }
