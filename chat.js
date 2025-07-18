@@ -111,7 +111,7 @@ function sendChatMessage(message) {
       loadingElement.style.display = "none";
     })
     .catch((error) => {
-      addChatMessage("[SYSTEM]", error);
+      addChatMessage("[SYSTEM]", error.message);
       addChatMessage("SEC AI Assistant", "Sorry, I was unable to process your request.");
       loadingElement.style.display = "none";
     });
