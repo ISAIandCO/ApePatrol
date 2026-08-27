@@ -1,0 +1,13 @@
+:root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+* { box-sizing: border-box; } body { margin: 0; background: Canvas; color: CanvasText; }
+main { max-width: 980px; margin: auto; padding: 24px; } header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; } header img { width: 48px; height: 48px; }
+h1, h2, p { margin-top: 0; } h1 { margin-bottom: 2px; } h2 { font-size: 18px; }
+section { padding: 18px; margin: 14px 0; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.inline { display: flex; gap: 8px; } .inline input { flex: 1; }
+label { display: grid; gap: 4px; } label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; }
+input, textarea, select, button { font: inherit; } input[type="text"], input[type="url"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 7px; border: 1px solid color-mix(in srgb, CanvasText 28%, transparent); border-radius: 5px; background: Canvas; color: CanvasText; }
+button { padding: 7px 11px; border: 1px solid #2874b8; border-radius: 5px; background: #2874b8; color: white; cursor: pointer; }
+ul { padding: 0; list-style: none; } li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent); }
+li button { background: transparent; color: #b62929; border-color: #b62929; } footer { display: flex; align-items: center; gap: 12px; position: sticky; bottom: 0; padding: 12px 0; background: Canvas; }
+code { background: color-mix(in srgb, CanvasText 8%, Canvas); padding: 1px 4px; border-radius: 3px; }

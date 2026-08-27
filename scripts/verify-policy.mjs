@@ -1,0 +1,30 @@
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+
+const root = new URL("../dist/firefox/", import.meta.url);
+const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
+const failures = [];
+
+if (manifest.content_scripts?.length) failures.push("static content_scripts are forbidden");
+if (manifest.host_permissions?.length) failures.push("persistent host_permissions are forbidden");
+if (manifest.background?.service_worker) failures.push("Firefox artifact must use background scripts");
+if (manifest.browser_specific_settings?.gecko?.id !== "siem-monkey@isaiandco.local") failures.push("unexpected Gecko ID");
+if (manifest.browser_specific_settings?.gecko?.strict_min_version !== "140.0") failures.push("unexpected Firefox baseline");
+
+async function scan(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) await scan(file);
+    if (entry.isFile() && /\.(?:js|html|json)$/.test(entry.name)) {
+      const text = await readFile(file, "utf8");
+      for (const forbidden of ["globalMonkeyOptions", "jquery-ui-1.12.1", "__zone_symbol__xhrURL"]) {
+        if (text.includes(forbidden)) failures.push(`${path.relative(root.pathname, file)} contains ${forbidden}`);
+      }
+    }
+  }
+}
+await scan(root.pathname);
+
+if (failures.length) {
+  throw new Error(`Policy verification failed:\n- ${failures.join("\n- ")}`);
+}

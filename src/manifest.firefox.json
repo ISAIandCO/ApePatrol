@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "SiemMonkey",
+  "description": "Firefox companion for MaxPatrol SIEM 27.3",
+  "version": "__VERSION__",
+  "version_name": "__VERSION__ (MP SIEM 27.3)",
+  "icons": {
+    "16": "img/icon16.png",
+    "48": "img/icon48.png",
+    "128": "img/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "img/icon16.png",
+      "32": "img/icon48.png"
+    },
+    "default_title": "SiemMonkey",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "downloads"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "siem-monkey@isaiandco.local",
+      "strict_min_version": "140.0",
+      "update_url": "__SELF_HOSTED_UPDATE_URL__",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ],
+        "optional": [
+          "websiteContent",
+          "authenticationInfo"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  }
+}
