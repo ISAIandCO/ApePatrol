@@ -1,0 +1,100 @@
+name: Release signed XPI
+run-name: Release signed XPI from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - run: npm ci
+      - run: npm run build:self-hosted
+      - name: Read version
+        id: meta
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Prepare auditable source artifacts
+        shell: bash
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          mkdir -p artifacts/release
+          git archive --format=zip --output="artifacts/release/siem-monkey-${version}-source.zip" HEAD
+          npm sbom --sbom-format cyclonedx --omit=dev > "artifacts/release/siem-monkey-${version}-sbom.cdx.json"
+      - name: Request Mozilla unlisted signature
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: >-
+          ./node_modules/.bin/web-ext sign
+          --source-dir dist/firefox
+          --artifacts-dir artifacts/signed
+          --channel unlisted
+          --api-key "$WEB_EXT_API_KEY"
+          --api-secret "$WEB_EXT_API_SECRET"
+          --no-input
+      - name: Verify signed XPI and prepare update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.meta.outputs.version }}"
+          expected_id="siem-monkey@isaiandco.local"
+          update_url="https://github.com/ISAIandCO/siem-monkey-firefox/releases/latest/download/updates.json"
+          signed="$(find artifacts/signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
+          test -n "$signed"
+          xpi="artifacts/release/siem-monkey-${version}-firefox.xpi"
+          mv "$signed" "$xpi"
+          unzip -p "$xpi" manifest.json | jq -e --arg version "$version" --arg id "$expected_id" --arg update_url "$update_url" \
+            '.version == $version and .browser_specific_settings.gecko.id == $id and .browser_specific_settings.gecko.update_url == $update_url and .browser_specific_settings.gecko.strict_min_version == "140.0"'
+          digest="$(sha256sum "$xpi" | cut -d ' ' -f 1)"
+          jq -n --arg id "$expected_id" --arg version "$version" \
+            --arg link "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/siem-monkey-${version}-firefox.xpi" \
+            --arg hash "sha256:${digest}" \
+            '{addons: {($id): {updates: [{version: $version, update_link: $link, update_hash: $hash}]}}}' \
+            > artifacts/release/updates.json
+          cd artifacts/release
+          sha256sum "siem-monkey-${version}-firefox.xpi" "siem-monkey-${version}-source.zip" \
+            "siem-monkey-${version}-sbom.cdx.json" updates.json > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - name: Transfer validated release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    needs: build-and-sign
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "v${{ needs.build-and-sign.outputs.version }}"
+          release-assets/*
+          --repo "$GITHUB_REPOSITORY"
+          --target "$GITHUB_SHA"
+          --title "SiemMonkey v${{ needs.build-and-sign.outputs.version }}"
+          --generate-notes
