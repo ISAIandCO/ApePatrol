@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SiemMonkey</title>
+  <title>ApePatrol</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><img src="img/icon48.png" alt=""><div><h1>SiemMonkey</h1><p id="status">Connecting…</p></div></header>
+  <header><img src="assets/icons/icon-48.png" alt=""><div><h1>ApePatrol <small>3.0</small></h1><p id="status">Connecting…</p></div></header>
   <nav id="tabs" aria-label="Tools">
     <button data-panel="event" class="active">Event</button><button data-panel="process">Process</button>
     <button data-panel="related">Related</button><button data-panel="incidents">Incidents</button>
@@ -22,6 +22,7 @@
     <section id="tools" class="panel"><h2>Custom filters</h2><select id="custom-filter"></select><pre id="filter-preview"></pre><button id="open-filter">Open filter</button><h2>Table Lists</h2><button id="load-lists">Load available lists</button><select id="table-list"></select><textarea id="table-row" rows="3" placeholder='Row as JSON array, e.g. ["value", "type", "description"]'></textarea><div class="actions"><button id="table-add">Add row</button><button id="table-remove" class="danger">Remove row</button></div><pre id="tools-output"></pre></section>
     <section id="ai" class="panel"><h2>SEC AI Assistant</h2><p id="ai-disclosure"></p><button id="ai-run">Review and send event</button><pre id="ai-output"></pre></section>
   </main>
+  <footer class="about"><strong>ApePatrol</strong> · Analyst Productivity Extension<br>Firefox investigation companion for MaxPatrol SIEM.<br><span>Successor to SiemMonkey. Independent open-source project; not affiliated with or endorsed by Positive Technologies.</span></footer>
   <script src="popup.js"></script>
 </body>
 </html>

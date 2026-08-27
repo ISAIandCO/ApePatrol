@@ -8,7 +8,8 @@ const failures = [];
 if (manifest.content_scripts?.length) failures.push("static content_scripts are forbidden");
 if (manifest.host_permissions?.length) failures.push("persistent host_permissions are forbidden");
 if (manifest.background?.service_worker) failures.push("Firefox artifact must use background scripts");
-if (manifest.browser_specific_settings?.gecko?.id !== "siem-monkey@isaiandco.local") failures.push("unexpected Gecko ID");
+if (manifest.name !== "ApePatrol") failures.push("unexpected product name");
+if (manifest.browser_specific_settings?.gecko?.id !== "apepatrol@isaiandco.local") failures.push("unexpected Gecko ID");
 if (manifest.browser_specific_settings?.gecko?.strict_min_version !== "140.0") failures.push("unexpected Firefox baseline");
 
 async function scan(directory) {

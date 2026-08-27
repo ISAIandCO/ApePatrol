@@ -11,10 +11,10 @@ function redact(value, seen = new WeakSet()) {
 export function createLogger(enabled = false) {
   return {
     debug(message, details) {
-      if (enabled) console.debug(`[SiemMonkey] ${message}`, details === undefined ? "" : redact(details));
+      if (enabled) console.debug(`[ApePatrol] ${message}`, details === undefined ? "" : redact(details));
     },
     warn(message) {
-      console.warn(`[SiemMonkey] ${message}`);
+      console.warn(`[ApePatrol] ${message}`);
     },
   };
 }

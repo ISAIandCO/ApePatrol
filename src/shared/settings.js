@@ -1,8 +1,10 @@
 import { normalizeOrigin, parseSafeExternalUrl } from "./url.js";
 import { BUILTIN_FILTERS, normalizeCustomFilter } from "../siem/features/custom-filters.js";
 
-export const SYNC_STORAGE_KEY = "siemMonkeySettings";
-export const LOCAL_SECRETS_KEY = "siemMonkeySecrets";
+export const SYNC_STORAGE_KEY = "apePatrolSettings";
+export const LOCAL_SECRETS_KEY = "apePatrolSecrets";
+export const LEGACY_SYNC_STORAGE_KEY = "siemMonkeySettings";
+export const LEGACY_LOCAL_SECRETS_KEY = "siemMonkeySecrets";
 
 export const DEFAULT_SETTINGS = Object.freeze({
   schemaVersion: 3,

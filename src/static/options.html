@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SiemMonkey settings</title>
+  <title>ApePatrol settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <main>
-    <header><img src="img/icon48.png" alt=""><div><h1>SiemMonkey settings</h1><p>Firefox-first companion for MaxPatrol SIEM 27.3</p></div></header>
+    <header><img src="assets/icons/icon-96.png" alt=""><div><h1>ApePatrol settings</h1><p>Firefox investigation companion for MaxPatrol SIEM · Target: 27.3</p></div></header>
     <section><h2>MaxPatrol SIEM instances</h2><p>No page access is granted until you explicitly add an origin.</p><div class="inline"><input id="instance-origin" type="url" placeholder="https://siem.example.internal"><button id="add-instance">Grant exact-origin access</button></div><ul id="instances"></ul></section>
     <section><h2>Features</h2><div id="features" class="grid">
       <label><input id="feature-eventActions" type="checkbox"> Event field actions</label>
@@ -28,6 +28,7 @@
     <section><h2>VirusTotal</h2><p>Hash and API-key transmission remains disabled until configured and granted separately.</p><label>API key <input id="vt-api-key" type="password" autocomplete="off"></label><p id="vt-status"></p></section>
     <section><h2>SEC AI Assistant</h2><p>The assistant is disabled by default. Every request previews the destination, transmission mode and visible fields.</p><div class="grid"><label>OpenAI-compatible endpoint <input id="ai-endpoint" type="url" placeholder="https://llm.example/v1/chat/completions"></label><label>Model <input id="ai-model" type="text"></label><label>Transmission mode <select id="ai-mode"><option value="redacted">Redacted event</option><option value="selected">Selected fields</option><option value="full">Full event</option></select></label><label>Maximum payload bytes <input id="ai-max-bytes" type="number" min="1024" max="200000"></label></div><label>Allow fields (one per line)<textarea id="ai-allow" rows="4"></textarea></label><label>Deny field fragments (one per line)<textarea id="ai-deny" rows="4"></textarea></label><label>API key <input id="ai-api-key" type="password" autocomplete="off"></label><p id="ai-status"></p></section>
     <section><label><input id="debug-logging" type="checkbox"> Debug logging (secrets and full events are always redacted)</label></section>
+    <section class="about"><h2>About ApePatrol 3.0</h2><p>ApePatrol is the successor to SiemMonkey and continues its original idea as a substantially redesigned Firefox-first extension.</p><p><strong>APE</strong> = Analyst Productivity Extension.</p><p>ApePatrol is an independent open-source project and is not affiliated with, endorsed by, or an official component of Positive Technologies.</p></section>
     <footer><button id="save">Save settings</button><p id="status" role="status"></p></footer>
   </main>
   <script src="options.js"></script>

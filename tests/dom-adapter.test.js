@@ -38,7 +38,7 @@ describe("MP SIEM 27.3 DOM adapter fixtures", () => {
     const feature = new IocDescriptionFeature(client, { features: { addIocDescription: true }, iocListName: "IOCs_Value" }, { debug() {} });
     await feature.mount();
     feature.onDomChanged();
-    expect(document.querySelector(".siem-monkey-ioc-description")).toBeTruthy();
+    expect(document.querySelector(".apepatrol-ioc-description")).toBeTruthy();
     feature.unmount();
   });
 });

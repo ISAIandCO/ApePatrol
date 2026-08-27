@@ -1,8 +1,8 @@
 import { loadSecrets, loadSettings, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 
-const CONTENT_PREFIX = "siem-monkey-content-";
-const BRIDGE_PREFIX = "siem-monkey-bridge-";
+const CONTENT_PREFIX = "apepatrol-content-";
+const BRIDGE_PREFIX = "apepatrol-bridge-";
 
 async function refreshRegistrations() {
   const settings = await loadSettings();

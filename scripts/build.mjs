@@ -13,7 +13,7 @@ const argValue = (name) => {
 const outDir = path.resolve(root, argValue("--out-dir") ?? "dist/firefox");
 const selfHosted = process.argv.includes("--self-hosted");
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const updateUrl = "https://github.com/ISAIandCO/siem-monkey-firefox/releases/latest/download/updates.json";
+const updateUrl = `https://github.com/${process.env.GITHUB_REPOSITORY || "ISAIandCO/siem-monkey-firefox"}/releases/latest/download/updates.json`;
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
@@ -40,7 +40,7 @@ await build({
 for (const file of ["popup.html", "popup.css", "options.html", "options.css", "content.css"]) {
   await cp(path.join(root, "src/static", file), path.join(outDir, file));
 }
-await cp(path.join(root, "img"), path.join(outDir, "img"), { recursive: true });
+await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
 
 const manifestTemplate = await readFile(path.join(root, "src/manifest.firefox.json"), "utf8");
 const manifest = JSON.parse(manifestTemplate

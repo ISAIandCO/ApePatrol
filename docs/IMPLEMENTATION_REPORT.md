@@ -1,4 +1,6 @@
-# SiemMonkey 3.0 implementation report
+# ApePatrol 3.0 implementation report
+
+This release completes the SiemMonkey → ApePatrol transition. ApePatrol is the Firefox-first successor focused on analyst investigation workflows in MaxPatrol SIEM.
 
 ## Architecture and Firefox
 
@@ -15,7 +17,7 @@ Firefox Desktop 140+ is the baseline because `data_collection_permissions` is re
 | IP/hash links | unsafe templates/window.open | typed providers, encoded values, HTTP(S) only | Unit tested; live pending |
 | VirusTotal | popup key from sync storage | background fetch, local key, explicit permissions | Unit/build tested; live pending |
 | Custom filters | raw interpolation/server temp filter | central PDQL builder; no temp-filter workflow | Unit tested; live pending |
-| Correlation description | duplicate Monkey UI | native detection; no duplicate | Fixture tested; live pending |
+| Correlation description | duplicate legacy UI | native detection; no duplicate | Fixture tested; live pending |
 | Table Lists | contextless delete icon | list, preview, confirmation, typed errors | Pending |
 | IOC description | DOM attributes/global XHR patch | API mapping, one-use state, XHR/fetch endpoint guard | Build tested; live pending |
 | EDR disable | request left pending | UI-level hide | Pending |

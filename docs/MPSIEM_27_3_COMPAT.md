@@ -25,8 +25,8 @@ All calls check HTTP status. 401/403 are not retried. 404 becomes `unsupported`;
 
 ## Native overlap
 
-- native correlation description: Monkey does not add a second description;
-- native PDQL/event action menu: Monkey skips that field;
+- native correlation description: ApePatrol does not add a second description;
+- native PDQL/event action menu: ApePatrol skips that field;
 - native autocomplete: the adapter detects it; 3.0 does not overlay a second autocomplete;
 - EDR integration: optional disable works by hiding detected UI, not suppressing requests.
 

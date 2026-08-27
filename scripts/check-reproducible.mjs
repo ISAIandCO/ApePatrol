@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const temporary = await mkdtemp(path.join(tmpdir(), "siem-monkey-repro-"));
+const temporary = await mkdtemp(path.join(tmpdir(), "apepatrol-repro-"));
 const first = path.join(temporary, "first");
 const second = path.join(temporary, "second");
 

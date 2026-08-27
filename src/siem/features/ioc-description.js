@@ -27,11 +27,11 @@ export class IocDescriptionFeature {
   onDomChanged() {
     if (!this.table || this.input?.isConnected) return;
     const form = queryDeep("form[action*='/whitelists/'], [data-testid*='table-list-add'], [class*='whitelist'][class*='dialog']");
-    if (!form || form.querySelector(".siem-monkey-ioc-description")) return;
+    if (!form || form.querySelector(".apepatrol-ioc-description")) return;
     const input = document.createElement("input");
     input.type = "text";
     input.maxLength = 500;
-    input.className = "siem-monkey-ioc-description";
+    input.className = "apepatrol-ioc-description";
     input.placeholder = "IOC description (optional)";
     input.autocomplete = "off";
     form.append(input);
@@ -41,7 +41,7 @@ export class IocDescriptionFeature {
         const token = this.table.token ?? this.table.id;
         if (!token || !input.value.trim()) return;
         window.postMessage({
-          source: "siem-monkey",
+          source: "apepatrol",
           type: "ioc-description",
             token: String(token),
             description: input.value.trim(),

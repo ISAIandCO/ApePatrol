@@ -10,12 +10,12 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  window[Symbol.for("siem-monkey.network-interceptor.v3")]?.unpatch();
+  window[Symbol.for("apepatrol.network-interceptor.v3")]?.unpatch();
   window.fetch = originalFetch;
 });
 
 function bridgeMessage(data) {
-  window.dispatchEvent(new MessageEvent("message", { source: window, origin: location.origin, data: { source: "siem-monkey", ...data } }));
+  window.dispatchEvent(new MessageEvent("message", { source: window, origin: location.origin, data: { source: "apepatrol", ...data } }));
 }
 
 describe("narrow MAIN-world network bridge", () => {

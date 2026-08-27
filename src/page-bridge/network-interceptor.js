@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const marker = Symbol.for("siem-monkey.network-interceptor.v3");
+  const marker = Symbol.for("apepatrol.network-interceptor.v3");
   if (window[marker]) return;
 
   const original = {
@@ -67,7 +67,7 @@
     delete window[marker];
   };
   window.addEventListener("message", (event) => {
-    if (event.source !== window || event.origin !== location.origin || event.data?.source !== "siem-monkey") return;
+    if (event.source !== window || event.origin !== location.origin || event.data?.source !== "apepatrol") return;
     if (event.data.type === "bridge-config") {
       enabled = event.data.iocDescription === true;
       if (!enabled) pending = null;

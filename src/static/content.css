@@ -1,6 +1,6 @@
-.siem-monkey-field-action { margin-inline-start: 4px; padding: 1px 4px; border: 0; background: transparent; cursor: pointer; }
-.siem-monkey-action-menu { position: fixed; z-index: 2147483647; display: grid; min-width: 220px; padding: 6px; border: 1px solid #64748b; border-radius: 6px; background: #fff; color: #111827; box-shadow: 0 8px 24px #0004; }
-.siem-monkey-action-menu button { padding: 6px 8px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.siem-monkey-action-menu button:hover { background: #e8f1fb; }
-.siem-monkey-ioc-description { display: block; width: 100%; margin-block: 8px; padding: 7px; }
-.siem-monkey-field-alias { margin-inline-start: 4px; opacity: .72; font-size: .92em; }
+.apepatrol-field-action { margin-inline-start: 4px; padding: 1px 4px; border: 0; background: transparent; cursor: pointer; }
+.apepatrol-action-menu { position: fixed; z-index: 2147483647; display: grid; min-width: 220px; padding: 6px; border: 1px solid #64748b; border-radius: 6px; background: #fff; color: #111827; box-shadow: 0 8px 24px #0004; }
+.apepatrol-action-menu button { padding: 6px 8px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.apepatrol-action-menu button:hover { background: #e8f1fb; }
+.apepatrol-ioc-description { display: block; width: 100%; margin-block: 8px; padding: 7px; }
+.apepatrol-field-alias { margin-inline-start: 4px; opacity: .72; font-size: .92em; }

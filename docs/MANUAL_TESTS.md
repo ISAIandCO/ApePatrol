@@ -5,7 +5,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 ## Installation and update
 
 - [ ] Clean Firefox 140+ installs the signed XPI without Developer Mode.
-- [ ] Before configuration, ordinary websites show no SiemMonkey script, DOM marker or XHR/fetch patch.
+- [ ] Before configuration, ordinary websites show no ApePatrol script, DOM marker or XHR/fetch patch.
 - [ ] Adding one SIEM origin grants only `<origin>/*`; removing it unregisters scripts and removes permission.
 - [ ] Release N discovers N+1 via `updates.json`; SHA-256 matches and settings/instances survive.
 

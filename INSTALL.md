@@ -1,11 +1,11 @@
-# Установка SiemMonkey в Firefox
+# Установка ApePatrol в Firefox
 
 ## Обычная установка
 
 1. Откройте GitHub Releases репозитория.
-2. Скачайте **подписанный** `siem-monkey-<version>-firefox.xpi`.
+2. Скачайте **подписанный** `apepatrol-<version>-firefox.xpi`.
 3. Откройте XPI в Firefox 140+ и подтвердите установку.
-4. Откройте настройки SiemMonkey.
+4. Откройте настройки ApePatrol.
 5. В **MaxPatrol SIEM instances** введите только origin, например `https://siem.example.internal`.
 6. Нажмите **Grant exact-origin access** и подтвердите permission Firefox.
 
@@ -13,7 +13,7 @@ Developer Mode для подписанного release не нужен. Unsigned
 
 ## Обновления
 
-Подписанный XPI имеет ID `siem-monkey@isaiandco.local` и получает update manifest из `releases/latest/download/updates.json`. XPI в manifest всегда указывает на versioned release asset и проверяется SHA-256.
+Подписанный XPI имеет постоянный ID `apepatrol@isaiandco.local` и получает update manifest из `releases/latest/download/updates.json`. URL вычисляется из текущего `GITHUB_REPOSITORY`, поэтому переименование репозитория не требует правки исходников. XPI в manifest всегда указывает на versioned release asset и проверяется SHA-256.
 
 ## Внешние сервисы
 

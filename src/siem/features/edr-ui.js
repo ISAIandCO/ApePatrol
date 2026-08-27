@@ -6,15 +6,15 @@ export class EdrUiFeature {
     if (!this.enabled) return;
     const root = queryDeep("[data-testid*='edr-integration'], [class*='edr-integration'], [aria-label*='EDR' i]");
     if (root && !this.hidden.has(root)) {
-      root.dataset.siemMonkeyPreviousDisplay = root.style.display;
+      root.dataset.apepatrolPreviousDisplay = root.style.display;
       root.style.display = "none";
       this.hidden.add(root);
     }
   }
   unmount() {
     for (const element of this.hidden) {
-      element.style.display = element.dataset.siemMonkeyPreviousDisplay ?? "";
-      delete element.dataset.siemMonkeyPreviousDisplay;
+      element.style.display = element.dataset.apepatrolPreviousDisplay ?? "";
+      delete element.dataset.apepatrolPreviousDisplay;
     }
     this.hidden.clear();
   }

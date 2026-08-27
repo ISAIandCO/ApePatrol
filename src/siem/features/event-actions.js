@@ -22,13 +22,13 @@ export class EventFieldActions {
     for (const field of ACTION_FIELDS) {
       const value = event[field];
       const label = value && adapter.getEventFieldElement(field);
-      if (!label || label.parentElement?.querySelector(":scope > .siem-monkey-field-action")) continue;
+      if (!label || label.parentElement?.querySelector(":scope > .apepatrol-field-action")) continue;
       if (adapter.isNativeFeaturePresent("eventActions", label.parentElement) || adapter.isNativeFeaturePresent("copyPdql", label.parentElement)) continue;
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "siem-monkey-field-action";
+      button.className = "apepatrol-field-action";
       button.textContent = "🐵";
-      button.title = `SiemMonkey actions: ${field}`;
+      button.title = `ApePatrol actions: ${field}`;
       button.addEventListener("click", (clickEvent) => {
         clickEvent.stopPropagation();
         this.openMenu(button, field, value, event);
@@ -39,10 +39,10 @@ export class EventFieldActions {
   }
 
   openMenu(anchor, field, rawValue, event) {
-    document.querySelector(".siem-monkey-action-menu")?.remove();
+    document.querySelector(".apepatrol-action-menu")?.remove();
     const value = field.endsWith("hash") ? (extractPreferredHash(rawValue) ?? rawValue) : rawValue;
     const menu = document.createElement("div");
-    menu.className = "siem-monkey-action-menu";
+    menu.className = "apepatrol-action-menu";
     const add = (label, handler) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -79,7 +79,7 @@ export class EventFieldActions {
   unmount() {
     for (const element of this.elements) element.remove();
     this.elements.clear();
-    document.querySelector(".siem-monkey-action-menu")?.remove();
+    document.querySelector(".apepatrol-action-menu")?.remove();
   }
 }
 

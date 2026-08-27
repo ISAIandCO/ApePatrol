@@ -1,8 +1,14 @@
-# SiemMonkey
+# ApePatrol
 
-Firefox-first расширение-компаньон для **MaxPatrol SIEM 27.3**. Оно добавляет инструменты расследования, не заменяя интерфейс SIEM и не дублируя обнаруженные штатные функции.
+**Firefox investigation companion for MaxPatrol SIEM**
 
-## Возможности 3.0.0
+> ApePatrol is the successor to SiemMonkey. The project has been substantially redesigned around Firefox and MaxPatrol SIEM 27.3.
+
+ApePatrol — расширение-компаньон для расследований в **MaxPatrol SIEM 27.3**. Название продолжает исходную идею проекта: Monkey эволюционировал в Ape, а **APE** может читаться как *Analyst Productivity Extension*.
+
+ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
+
+## Возможности ApePatrol 3.0.0
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
@@ -25,7 +31,7 @@ Firefox-first расширение-компаньон для **MaxPatrol SIEM 27
 
 Секреты хранятся только в `storage.local`, никогда не выдаются content script/page world и не пишутся в DOM или журнал. MAIN world получает лишь одноразовые данные конкретной IOC-операции. Event values, LLM output и настройки считаются недоверенными и выводятся через `textContent`/DOM API. Внешняя передача отключена до отдельной настройки, выдачи permission и действия оператора.
 
-Подробнее: [INSTALL.md](INSTALL.md), [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [ручные тесты](docs/MANUAL_TESTS.md).
+Подробнее: [INSTALL.md](INSTALL.md), [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [бренд](docs/BRANDING.md), [ручные тесты](docs/MANUAL_TESTS.md).
 
 ## Разработка
 

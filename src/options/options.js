@@ -19,7 +19,7 @@ function renderInstances() {
     const text = document.createElement("span"); text.textContent = origin;
     const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove access";
     remove.addEventListener("click", async () => {
-      if (!confirm(`Remove SiemMonkey access to ${origin}? Instance-specific registration and cache will be removed.`)) return;
+      if (!confirm(`Remove ApePatrol access to ${origin}? Instance-specific registration and cache will be removed.`)) return;
       state.settings.instances = state.settings.instances.filter((itemOrigin) => itemOrigin !== origin);
       await browser.permissions.remove({ origins: [originPattern(origin)] });
       await browser.runtime.sendMessage({ type: "settings:save", settings: state.settings });

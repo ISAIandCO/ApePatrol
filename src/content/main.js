@@ -30,7 +30,7 @@ async function initialize() {
   const settings = response.settings;
   const logger = createLogger(settings.debugLogging);
   await browser.runtime.sendMessage({ type: "content:ready" });
-  window.postMessage({ source: "siem-monkey", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
+  window.postMessage({ source: "apepatrol", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
 
   const adapter = new R27_3Adapter();
   const client = new SiemApiClient(location.origin);
@@ -130,4 +130,4 @@ async function buildProcessContext(client, event, settings) {
   return { ok: true, graph, sourceUuid: event.uuid ?? null };
 }
 
-initialize().catch((error) => console.warn(`[SiemMonkey] initialization failed: ${error.message}`));
+initialize().catch((error) => console.warn(`[ApePatrol] initialization failed: ${error.message}`));
