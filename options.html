@@ -26,7 +26,7 @@
 <br/>
 <label>
   <b>VT API Key:</b>
-  <input type="text" class="inputfield" id="vt-api-key" size=70">
+  <input type="text" class="inputfield" id="vt-api-key" size="70px">
 </label>
 <br/>
 <br/>
@@ -45,8 +45,43 @@
   <input type="checkbox" id="disable_agg_sort" name="disable_agg_sort">
   <label for="disable_agg_sort">Отключить новое поведение сортировки при аггрегации (R25.1 и выше)</label>
 </div>
+<div>
+  <input type="checkbox" id="add_input_for_IOCs_description" name="add_input_for_IOCs_description">
+  <label for="add_input_for_IOCs_description">Добавить поле для ввода описания при добавлении IOC'ов в меню "Добавить исключения"</label>
+</div>
+<div>
+  <input type="checkbox" id="disable_edr_integration" name="disable_edr_integration">
+  <label for="disable_edr_integration">Отключить возможность реагирования через EDR в панели события</label>
+</div>
+
 <br/>
 <br/>
+<hr>
+<b>Параметры SEC AI Assistant</b>
+<div>
+  <input type="checkbox" id="enable_sec_ai_assistant" name="enable_sec_ai_assistant">
+  <label for="enable_sec_ai_assistant">Влючить SEC AI Assistant</label>
+</div>
+
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM API ENDPOINT URL:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_endpoint" size=120 placeholder="http://localhost:3503/v1/chat/completions">
+</div>
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM API KEY:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_key" size=120>
+</div>
+<div class="input-container">
+  <label class="input-label">
+    <b>LLM название модели:</b>
+  </label>
+  <input type="text" class="inputfield" id="llm_api_model_name" size=120>
+</div>
+
 <hr>
 <br/>
 <b>Сервисы для получения информации по IP-адресам:</b>

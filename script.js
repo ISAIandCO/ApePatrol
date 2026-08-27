@@ -13,12 +13,15 @@
 //    limitations under the License.
 
 
-pt_tags = ["pt-siem-app-root", "pt-nad-root"];
+pt_tags = ["pt-siem-app-root", "pt-nad-root", "ips-root"];
 pt_product = false;
 siem_bananas = {
   ".mc-sidebar_wide": "old",
   ".mc-sidebar_right": "R24",
   "mc-sidedar-toggle": "R25",
+  ".mc-sidebar-toggle": "R27.1",
+  "legacy-events-content": "R27.1",
+  "mc-navbar-title": "R27.3"
 };
 siem_ver = "";
 prod_name = "";
@@ -67,12 +70,11 @@ var SearchBananas = function (selectors, callback, interval, timeout) {
         bananas_found = document.querySelectorAll(banana).length;
         if (bananas_found == 0) {
           // no bananas in DOM. try in shadow DOM
-          let legacy_events = $("legacy-events-page");
-          if (legacy_events.length === 1) {
-            let shadowRoot = legacy_events[0].shadowRoot;
-            if (shadowRoot) {
-              bananas_found = $(shadowRoot).find(banana).length;
-            }
+          let shadows = findRoots(document.body);
+          if (shadows) {
+            $.each(shadows, function (i, el){
+              bananas_found += $(el).find(banana).length;
+            })
           }
         }
         if (bananas_found > 0) {
@@ -88,10 +90,54 @@ var SearchBananas = function (selectors, callback, interval, timeout) {
   }, interval);
 };
 
+function findRoots(ele) {
+  return [
+      ele,
+      ...ele.querySelectorAll('*')
+  ].filter(e => !!e.shadowRoot)
+      .flatMap(e => [e.shadowRoot, ...findRoots(e.shadowRoot)])
+}
+
+/**
+ * Adopting a constructed stylesheet to be used by the document or ShadowRoots 
+ * @param {*} doc document or ShadowRoot to adopt
+ * @param {*} path CSS file path
+ */
+function adoptCSS(doc, path) {
+  let MonkeyCSS;
+  try {
+    let css_url = chrome.runtime.getURL(path);
+    let xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      MonkeyCSS = this.response;
+    };
+    xhr.open("GET", css_url, false);
+    xhr.send();
+  } catch (err) {
+    console.log("Не удалось прочитать файл " + path);
+    return;
+  }
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(MonkeyCSS);
+  doc.adoptedStyleSheets = [sheet];
+}
+
 SearchBananas(
   siem_bananas,
   function () {
     insertMonkeyIntoUI();
+
+    // load CSS in main tree
+    let ui_css_path = chrome.runtime.getURL("libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css");
+    let ui_css_path2 = chrome.runtime.getURL("siemMonkey.css");
+    $('head').append($('<link>')
+      .attr("rel","stylesheet")
+      .attr("type","text/css")
+      .attr("href", ui_css_path));
+    $('head').append($('<link>')
+      .attr("rel","stylesheet")
+      .attr("type","text/css")
+      .attr("href", ui_css_path2));
     // Если есть элементы "legacy-overlay" и "legacy-events-page", то мы очутились в 26.1
     // Загружать CSS и вешать обработчик мутаций страницы нужно внутри shadowRoot
     let legacy_overlay = $("legacy-overlay");
@@ -103,27 +149,7 @@ SearchBananas(
         characterData: true,
         attributes: true,
       });
-      let jquery_ui_css;
-      try {
-        let css_url = chrome.runtime.getURL(
-          "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css" // using jquery-ui css just with embedded images
-        );
-        let xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          jquery_ui_css = this.response;
-        };
-        xhr.open("GET", css_url, false);
-        xhr.send();
-      } catch (err) {
-        console.log(
-          "Не удалось прочитать файл libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"
-        );
-        return;
-      }
-
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(jquery_ui_css);
-      shadowRoot.adoptedStyleSheets = [sheet];
+      adoptCSS(shadowRoot, "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"); // using jquery-ui css just with embedded images
     }
 
     let legacy_events_page = $("legacy-events-page");
@@ -135,26 +161,59 @@ SearchBananas(
         characterData: true,
         attributes: true,
       });
-      let siemMonkeyCSS;
-      try {
-        let css_url = chrome.runtime.getURL("siemMonkey.css");
-        let xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          siemMonkeyCSS = this.response;
-        };
-        xhr.open("GET", css_url, false);
-        xhr.send();
-      } catch (err) {
-        console.log("Не удалось прочитать файл siemMonkey.css");
-        return;
-      }
+      adoptCSS(shadowRoot, "siemMonkey.css");
+    }
 
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(siemMonkeyCSS);
-      shadowRoot.adoptedStyleSheets = [sheet];
+    let ips_shell_remote_app = $("ips-shell-remote-app");
+    if( ips_shell_remote_app.length === 1) {
+      let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+      let siem_core = $("siem-core", shadowRootOne);
+      let shadowRootTwo = siem_core[0].shadowRoot;
+      observer.observe(shadowRootTwo, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      observer2.observe(shadowRootTwo, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      adoptCSS(shadowRootTwo, "siemMonkey.css");
+    }
+    
+
+    let legacy_events_content = $("legacy-events-content");
+    if (legacy_events_content.length === 1) {
+      let shadowRoot = legacy_events_content[0].shadowRoot;
+      observer.observe(shadowRoot, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      adoptCSS(shadowRoot, "libs/jquery-ui-1.12.1/jquery-ui.min.monkey.css"); // using jquery-ui css just with embedded images
+      //adoptCSS(shadowRoot, "siemMonkey.css");
+    } else if ($("mc-sidebar").last().length != 0) {
+      sidebar = $("mc-sidebar").last()[0];
+      observer.observe(sidebar,{
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+      pt_siem_main = $("pt-siem-main").last()[0];
+      observer2.observe(pt_siem_main, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
     } else {
       // Старый добрый UI до 26.0 включительно - вешаем обработчик мутаций прямо на весь document,
-      // а CSSы уже и так загружены расширением
+      // CSS уже подгружен в основное дерево
       observer.observe(document, {
         childList: true,
         subtree: true,
@@ -162,13 +221,29 @@ SearchBananas(
         attributes: true,
       });
     }
+
+      observer3.observe(document, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+      });
+    // }
+
   },
-  500,
-  6000
+  8000,
+  24000
 );
 
 function insertMonkeyIntoUI() {
   let siem_title_elem = $("body > pt-siem-app-root > pt-siem-header > header > mc-navbar > mc-navbar-container:nth-child(1) > pt-siem-navbar-brand > a > mc-navbar-title");
+  let root = document.body;
+  if (siem_title_elem.length === 0) {
+    let ipn_navbar_elem = $("body > ips-root > ips-overlay-mask > ipc-remote-projection > ipn-navbar");
+    root = ipn_navbar_elem[0].shadowRoot;
+    siem_title_elem = $("main > ipn-navbar-container > header > mc-navbar > mc-navbar-container:nth-child(1) > ipn-navbar-brand > a > mc-navbar-title", root);
+  }
+  
   let siem_title = siem_title_elem.text();
 
   let nad_title_elem = $(".mc-navbar-title:first");
@@ -176,9 +251,9 @@ function insertMonkeyIntoUI() {
   
  if (siem_title === "MaxPatrol 10") {
     makeSideBarGreatAgain();
-    let navbaritem = $(".mc-navbar-logo");
+    let navbaritem = $(".mc-navbar-logo", root);
     navbaritem.append(`<img class="monkeydropbtn" width="32" height="32" src="${icondataurl}" alt="" />`);
-    $(".monkeydropbtn")
+    $(".monkeydropbtn", root)
     .delay(100).fadeTo(100,0.5)
     .delay(100).fadeTo(100,1)
     .delay(100).fadeTo(100,0.5)
@@ -257,6 +332,8 @@ function extractLast( term ) {
   else {
     textbox = $("events-filter-popover textarea");
   }
+  if(textbox.length === 0) 
+    textbox = $("textarea#pdqlFilterText");
  
   let end = textbox[0].selectionStart;
   let result = /\S+$/.exec(textbox[0].value.slice(0, end));
@@ -267,89 +344,58 @@ function extractLast( term ) {
 
 let observer = new MutationObserver(async mutations => {
   for(let mutation of mutations) {
-      if(mutation.target.parentNode && mutation.target.parentNode.nodeName === 'EVENTS-FILTER-POPOVER'){
-        // ━━━━━★. *･｡ﾟ✧⁺
-        if(fields.length == 0)
-        {
-          let msg = await getTaxonomy();
-          let fieldsinfo = msg['fields'];
-          fields = fieldsinfo.filter(x => x.filterable == true).map(y => y['name']); //не все поля подходят для фильтров 
-          fields.push('=');
-          fields.push('!=');
-          fields.push('>');
-          fields.push('<');
-          fields.push('>=');
-          fields.push('<=');
-          fields.push('in');
-          fields.push('match');
-          fields.push('startswith');
-          fields.push('endswith');
-          fields.push('contains');
-          fields.push('and');
-          fields.push('or');
-          fields.push('not');
-          fields.push('in_subnet');
+     // console.log(mutation);
+      // Добавим поле input для того, чтобы пользователь мог ввести описание для добавленного индикатора
+      // (само добавление данных реализовано в xhr_override.js)        
+      // TODO: добавить проверку параметра в настройках
+      if(mutation.target && mutation.target.nodeName == 'IC-PROGRESS-CONTAINER' && 
+        // mutation.target.nodeName && mutation.target.parentNode.nodeName == 'PT-SIEM-WHITELISTS-CARD' &&
+        mutation.target.nodeName && mutation.target.parentNode.nodeName == 'SIEM-WHITELISTS-CARD' &&
+        mutation.type === 'attributes'){
+        
+        // Если в параметрах расширения включена нужная галочка
+        if('options' in options && 'add_input_for_IOCs_description' in options.options && options.options.add_input_for_IOCs_description == true){
+          // console.log(mutation.target.nodeName + ' <- ' + mutation.target.parentNode.nodeName);
+          // сохраним в атрибутах элемента input имя пользователя, который добавляет исключение, и token табличного
+          // списка IOCs_value, в который будет добавляться вводимое описание
+          let current_siem_user_info = await getCurrentUserInfo();
+          let current_siem_username = current_siem_user_info['userName'];
+          let tables_info = await getTablesInfo();
+          let IOCs_Value_info = tables_info.filter(function(item) { return item.name === 'IOCs_Value'; });
+          let IOCs_Value_token = IOCs_Value_info[0]['token'];
+          //console.log(mutation.target.parentNode.nodeName);
+          let input_node = $('<input>')
+          .addClass('iocs_description')
+          .attr('title', 'Описание индикатора для добавления в IOCs_Value')
+          .attr('user', current_siem_username)
+          .attr('token', IOCs_Value_token)
+          .attr('placeholder', 'Текст отсюда вносится в description в ТС IOCs_Value');
+          let whitelists_card = $(mutation.target.parentNode);
+          whitelists_card.prepend(input_node);
         }
-
-        ta = $("textarea", mutation.target.parentNode);
-        ta.on("keydown", function(event) {
-          if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete("instance").menu.active) {
-            event.preventDefault();
-          }
-        })
-        .autocomplete({
-          appendTo: ta.parent(),
-          position: {my : "left top", at: `right top`},
-          minLength: 1,
-          source: function(request, response) {
-            response($.ui.autocomplete.filter(fields, extractLast(request.term )));
-          },
-          focus: function() {
-            return false;
-          },
-          open: function() {
-            ta.textareaHelper();
-            let XY = ta.textareaHelper("caretPos");
-            let x = XY.left + 5;
-            let y = XY.top + 20;
-            $('.ui-autocomplete', ta.parent()).css('width', '230px'); // 230px хватит всем
-            $('.ui-autocomplete', ta.parent()).position({my: "left top", at: `left+${x} top+${y}`, of: ta});
-            // click is not triggered somehow. but mousedown is working. trigger click from mousedown
-            let items = $(".ui-menu-item", ta.parent());
-            items.on("mousedown", function (event) {
-              event.preventDefault();
-              $(this).click();
-            });
-          },
-          select: function(event, ui) {
-            let textbox = $(this);
-            let end = textbox[0].selectionStart;
-            let start = this.value.lastIndexOf(" ", end);
-            let newvalue = this.value.substring(0, start) + " " //старое начало
-            + ui.item.value + " "                               //новая середина
-            + this.value.substring(end, this.value.length);     //старый конец
-            this.value = newvalue;
-            return false;
-          }
-        });
       }
 
+
       //Добавляет описание и ссылку на правило в разделе "события"
-      if(mutation.target.parentNode && mutation.target.parentNode.parentNode 
-        && mutation.target.parentNode.parentNode.nodeName === 'RULES-CARD-LINK'
-        && mutation.target.parentNode.className === 'mc-link ng-binding ng-scope'
+      if(mutation.target.parentNode 
+         && mutation.target.parentNode.parentNode 
+         && mutation.target.parentNode.parentNode.parentNode
+        //&& mutation.target.parentNode.parentNode.nodeName === 'RULES-CARD-LINK'
+        && mutation.target.parentNode.parentNode.parentNode.nodeName === 'PT-SIEM-RULES-CARD-LINK'
+        //&& mutation.target.parentNode.className === 'mc-link ng-binding ng-scope'
         && 'options' in options && 'dont_show_desc_rules' in options.options && options.options.dont_show_desc_rules === false){
-          
-          let correlation_name_node = $(mutation.target.parentNode.parentNode).children('span.mc-link.ng-scope');
-          $(mutation.target.parentNode.parentNode).children('span.corr-desc').remove();
-          $(mutation.target.parentNode.parentNode).children('i.corr-link').remove();
+          console.log("bbbbbbbb");
+          //let correlation_name_node = $(mutation.target.parentNode.parentNode).children('span.mc-link.ng-scope');
+          let correlation_name_node = $(mutation.target.parentNode.parentNode.parentNode).children('span.mc-link');
+          $(mutation.target.parentNode.parentNode.parentNode).children('span.corr-desc').remove();
+          $(mutation.target.parentNode.parentNode.parentNode).children('i.corr-link').remove();
           
           let correlation_name = correlation_name_node.text();
           let msg = await getCorrelationRuleInfoByName(correlation_name);
           let [correlation_description, correlation_link_to_ptkb] = corr_name_info(msg);
 
-          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_description);
-          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_link_to_ptkb);
+          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_description, ".corr-desc");
+          setTimeout(AddElementIfNotExist, 0, correlation_name_node, correlation_link_to_ptkb, ".corr-link");
       }
 
       //Добавляет описание и ссылку на правило в разделе "инциденты"
@@ -377,6 +423,44 @@ let observer = new MutationObserver(async mutations => {
       }
 
       for(let addedNode of mutation.addedNodes) {
+        if(addedNode instanceof Node && addedNode.className === "mc-dt pt-text-overflow ng-star-inserted") {
+          // 27.1 adaptation
+          // console.log(addedNode);
+          if(addedNode.innerHTML.endsWith(".hash ") || addedNode.innerHTML.includes(".hash.") ) {
+            $(addedNode).css("color", "red").css("cursor", "pointer");
+            // if('options' in options && 'hashlinks' in options.options && options.options.hashlinks.length > 0) {
+            //   ObjectHashAdd(addedNode, addedNode.children[0].innerHTML);
+            // }
+            // else {
+              CommonFieldClickNew(addedNode, GetVirusTotalLinkForHash);
+            // }            
+          }
+          
+          if(addedNode.innerHTML === " external_link ") {
+              $(addedNode).css("color", "red").css("cursor", "pointer");
+              CommonFieldClickNew(addedNode, GetExternalLinkNew);
+          }
+
+          if(addedNode.innerHTML === " object ") {
+              $(addedNode).css("color", "red").css("cursor", "pointer");
+              ProcessHandlerNew(addedNode);  
+          }
+
+          if(addedNode.innerHTML ===  " uuid ") {
+            // TODO: 
+            if('options' in options &&
+             'dont_show_save_event_icons' in options.options && 
+             options.options.dont_show_save_event_icons == true) {
+              ; //если задана опция "Не показывать кнопки сохранения JSON события", то и не показываем
+            }
+            else {
+              await uuidChange(addedNode);
+            }
+            await shareableLinkIconAdd(addedNode);
+            await uuidChangeProcessAssets(addedNode);
+          } 
+        }
+
         // Регистрация обработчиков клика на названия определенных полей в правом сайдбаре (карточка события)
         if (addedNode instanceof Node && (addedNode.className === "mc-dl-conditional ng-scope")) {
               if(addedNode.children.length = 2 && addedNode.children[0].innerHTML === "uuid") {
@@ -427,6 +511,153 @@ let observer = new MutationObserver(async mutations => {
 });
 
 
+let observer2 = new MutationObserver(async mutations => {
+  for (let mutation of mutations) {
+    //console.log(mutation);
+    // if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-RECORDS-ACTION-BAR') {
+    //   console.log(mutation);
+    // }
+
+    // if(mutation.target && mutation.target.nodeName == 'PT-SIEM-TABLE-MODE-CHANGER') {
+    if(mutation.target && mutation.target.nodeName == 'SIEM-TABLE-MODE-CHANGER') {
+      // console.log(mutation)
+
+      let parent_node = $(mutation.target.parentNode);
+      let table_node = $(mutation.target.parentNode).closest("siem-table-records");
+      let monkey_trash_node = $("#monkey-trash", table_node);
+      if (monkey_trash_node.length == 0) {
+        let new_i = $("<i>")
+        .addClass("mc-btn__icon pt-icons pt-icons-delete_16")
+        .attr("id", "monkey-trash")
+        .css('cursor', 'pointer')
+        .attr('title', 'Удалить выделенную запись');
+        new_i.on("click", async function() {
+          // let selected_row = $(".ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-focus.ag-row-selected");
+          let table_node = $(this).closest("siem-table-records");
+          let selected_row = $(".ag-row-even.ag-row.ag-row-level-0.ag-row-position-absolute.ag-row-first.ag-row-focus.ag-row-selected", table_node);
+          let row_data = []
+          let spans = $("span", selected_row);
+          spans.each(function() {
+            row_data.push($(this).text().trim());
+          })
+          let url = new URL(window.location.href.replace('#',''));
+          let tableid = url.searchParams.get('table');
+          let newurl = window.location.origin + `/api/whitelists/${tableid}/remove`;
+          row_data.shift();
+          await removeRowFromTableList(newurl, row_data);
+          
+        })
+        parent_node.append(new_i);
+      }
+    }
+  }
+})
+
+
+let observer3 = new MutationObserver(async mutations => {
+  for(let mutation of mutations) {
+         
+        if(mutation.target.parentNode && mutation.target.parentNode.nodeName === 'MC-POPOVER-COMPONENT'){
+          console.log(mutation.target, mutation.target.parentNode);
+          // ━━━━━★. *･｡ﾟ✧⁺
+          if(fields.length == 0)
+          {
+            let msg = await getTaxonomy();
+            let fieldsinfo = msg['fields'];
+            fields = fieldsinfo.filter(x => x.filterable == true).map(y => y['name']); //не все поля подходят для фильтров 
+            fields.push('=');
+            fields.push('!=');
+            fields.push('>');
+            fields.push('<');
+            fields.push('>=');
+            fields.push('<=');
+            fields.push('in');
+            fields.push('match');
+            fields.push('startswith');
+            fields.push('endswith');
+            fields.push('contains');
+            fields.push('and');
+            fields.push('or');
+            fields.push('not');
+            fields.push('in_subnet');
+          }
+  
+          ta = $("textarea", mutation.target.parentNode);
+          ta.on("keydown", function(event) {
+            if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete("instance").menu.active) {
+              event.preventDefault();
+            }
+          })
+          .autocomplete({
+            appendTo: ta.parent(),
+            position: {my : "left top", at: `right top`},
+            minLength: 1,
+            source: function(request, response) {
+              response($.ui.autocomplete.filter(fields, extractLast(request.term )));
+            },
+            focus: function() {
+              return false;
+            },
+            open: function() {
+              ta.textareaHelper();
+              let XY = ta.textareaHelper("caretPos");
+              let x = XY.left + 5;
+              let y = XY.top + 20;
+              $('.ui-autocomplete', ta.parent()).css('width', '230px'); // 230px хватит всем
+              $('.ui-autocomplete', ta.parent()).position({my: "left top", at: `left+${x} top+${y}`, of: ta});
+              // click is not triggered somehow. but mousedown is working. trigger click from mousedown
+              let items = $(".ui-menu-item", ta.parent());
+              items.on("mousedown", function (event) {
+                event.preventDefault();
+                $(this).click();
+              });
+            },
+            select: function(event, ui) {
+              let textbox = $(this);
+              let end = textbox[0].selectionStart;
+              let start = this.value.lastIndexOf(" ", end);
+              let newvalue = this.value.substring(0, start) + " " //старое начало
+              + ui.item.value + " "                               //новая середина
+              + this.value.substring(end, this.value.length);     //старый конец
+              this.value = newvalue;
+              return false;
+            }
+          });
+        }
+  }
+});
+
+async function removeRowFromTableList(url, data) {
+  let request = await $.ajax
+  (
+      {
+          type: "POST",
+          url: url,
+          data: JSON.stringify(data),
+          contentType: 'application/json; charset=utf-8',
+          success: function(response) {
+            //console.log(response);
+            // "нажать" на кнопку "обновить", чтобы перезагрузить содержимое ТС в UI
+            let button = $("button.mc-button_transparent.ic-refresher__update.mc-icon-button.mc-second");
+            if (button.length == 0) {
+              let ips_shell_remote_app = $("ips-shell-remote-app");
+              if( ips_shell_remote_app.length === 1) {
+                let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+                let siem_core = $("siem-core", shadowRootOne);
+                let shadowRootTwo = siem_core[0].shadowRoot;
+                button = $("button.mc-button_transparent.mc-icon-button.ic-refresher__update.mc-secondary", shadowRootTwo);
+              }
+            }
+            button.click();
+          },
+          error: function(error) {
+            console.log(error);
+          }
+      }
+  );
+  return request;
+}
+
 async function GetOptionsFromStorage(){
   options  = await getStorageData('options');
 }
@@ -440,6 +671,33 @@ const getStorageData = key =>
             : resolve(result)
         )
     )  
+
+function getTablesInfo()
+{
+  //TODO: решить, как быть с разными конвейерами
+  let siemUrl = window.location.origin;
+  var request = $.ajax
+  (
+    {
+      type: "GET",
+      url: `${siemUrl}/api/events/v2/table_lists`
+    }
+  )
+  return request;
+}
+
+function getCurrentUserInfo()
+{
+  let siemUrl = window.location.origin;
+  var request = $.ajax
+  (
+    {
+      type: "GET",
+      url: `${siemUrl}/api/account/userinfo`
+    }
+  )
+  return request;
+}
 
 
 function getTaxonomy()
@@ -478,7 +736,7 @@ function corr_name_info(msg)
 
   let correlation_description = $('<span>')
   .addClass('corr-desc')
-  .addClass('mc-text-light')
+  .addClass('event-info_text-light')
   .text(` (${description})`);
 
   let correlation_link_to_ptkb = $('<i title="Открыть правило в Knowledge Base">')
@@ -526,7 +784,7 @@ async function getdata(siemUrl, filter, count, callback, outputelemsuffix="", tt
             let params = {"filter":
                             {"select": fields,
                             "where":`${filter}`,
-                            "orderBy":[{"field":"time","sortOrder":"descending"}],
+                            "orderBy":[{"field":"time","sortOrder":"ascending"}],
                             "groupBy":[],
                             "aggregateBy":[],
                             "distributeBy":[],
@@ -551,7 +809,7 @@ async function getdata(siemUrl, filter, count, callback, outputelemsuffix="", tt
                   $(".loading").remove();
                   loading.remove();
                   let events = msg['events'];
-                  callback(events, outputelemsuffix);
+                  callback(events, outputelemsuffix, "");
               },
               error: function(msg)
               {
@@ -617,6 +875,11 @@ function ProcessHandler(addedNode) {
 
       let time = getTimeValueFromSidebar();
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        /* in case if you use English-localized SIEM TODO: Вынести в отдельную нормальную функцию */
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
+      
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 3600; // на 1 час вперёд
 
@@ -693,6 +956,9 @@ function ProcessHandler(addedNode) {
       count = 1000;
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000;
 
@@ -756,6 +1022,9 @@ function ProcessHandler(addedNode) {
       let time = getTimeValueFromSidebar();
 
       let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
       let timeto = timeParsed.toDate();
       let ttimeto = timeto.getTime()/1000 + 86400; // на сутки вперед
 
@@ -786,12 +1055,267 @@ function ProcessHandler(addedNode) {
   //}
 }
 
+function ProcessHandlerNew(addedNode) {
+  $('.monkeymagicicon').remove();
+
+  let value_node_span = $(".mc-link__text", $(addedNode).next());
+
+  let ancestors_branch_icon = $(`<span title="Предки процесса...">🦧</span>`);
+  let session_tree_icon = $(`<span title="Дерево процессов сессии...">🦍</span>`);
+  let descendants_tree_icon = $(`<span title="Потомки процесса...">🐒</span>`)
+  
+  ancestors_branch_icon.addClass("monkeymagicicon");
+  session_tree_icon.addClass("monkeymagicicon");
+  descendants_tree_icon.addClass("monkeymagicicon");
+  
+  value_node_span.closest('pt-siem-text-truncate').after(descendants_tree_icon);
+  value_node_span.closest('pt-siem-text-truncate').after(ancestors_branch_icon);
+  value_node_span.closest('pt-siem-text-truncate').after(session_tree_icon);
+
+  //siem-text-truncate
+  value_node_span.closest('siem-text-truncate').children(":first").after(descendants_tree_icon);
+  value_node_span.closest('siem-text-truncate').children(":first").after(ancestors_branch_icon);
+  value_node_span.closest('siem-text-truncate').children(":first").after(session_tree_icon);
+
+    //одна ветка в дереве предков процесса
+    ancestors_branch_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title", `Родители процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+            treeBranchEvents = [];
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");
+
+      siemUrl = window.location.origin;
+
+      count = 1;
+
+      let time = getTimeValueFromSidebar();
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000 + 3600; // на 1 час вперёд
+
+      gtfrom = ttimeto - 86400; // и на сутки назад
+      gtto = ttimeto;
+
+      let uuid = getFieldValueFromSidebar("uuid");
+      let msgid = getFieldValueFromSidebar("msgid");
+
+      treeBranchEvents = [];
+
+      // Если текущее событие - событие запуска процесса, запускаем процесс построения дерева
+      if(msgid === '1' || msgid === '4688' || msgid === 'execve') {
+        getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranch, "", ttimeto - 86400, ttimeto);
+      }
+      // Иначе ищем доступными средствами соответсвующее событие запуска процесса 
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let uuid = e[0]['uuid'];
+            getdata(siemUrl, `uuid in ['${uuid}']`, count, processTreeBranch, "", ttimeto - 86400, ttimeto);
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+
+    //дерево процессов сессии
+    session_tree_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title",`Родители процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");;
+
+      siemUrl = window.location.origin;
+      let event_src_host = getFieldValueFromSidebar("event_src.host");
+      let processStartMsgid = getFieldValueFromSidebar("msgid"); 
+
+      let session = getFieldValueFromSidebar("object.account.session_id");
+      
+      let time = getTimeValueFromSidebar();
+
+      
+      // ограничение по числу процессов
+      // TODO: придумать способ задавать этот параметр при необходимости
+      count = 5000;
+
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000;
+
+      gtfrom = ttimeto - 86400;
+      gtto = ttimeto;
+      if(processStartMsgid === '1' || processStartMsgid === '4688' || processStartMsgid === 'execve') {
+        let pdqlfilter = "";
+        if (session === "" || session == null)
+          pdqlfilter = `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and (correlation_name = null)`;
+        else
+          pdqlfilter = `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`;
+        getdata(siemUrl, 
+          pdqlfilter, 
+          count, 
+          processTree, 
+          "", 
+          ttimeto - 86400, 
+          ttimeto);
+      }
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let event_src_host = e[0]['event_src.host'];
+            let processStartMsgid = e[0]['msgid'];
+            let session = e[0]['object.account.session_id'];
+
+            getdata(siemUrl, `event_src.host = "${event_src_host}" and msgid = "${processStartMsgid}" and object.account.session_id = ${session} and (correlation_name = null)`, count, processTree, "", ttimeto - 86400, ttimeto);
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+
+    descendants_tree_icon.click(function (){
+      var commandline = getFieldValueFromSidebar("object.process.cmdline");
+      let object_process_guid = getFieldValueFromSidebar("object.process.guid");
+      // иногда нужный GUID лежит в поле subject.process.guid
+      if(object_process_guid == "") {
+        object_process_guid = getFieldValueFromSidebar("subject.process.guid");
+        commandline = getFieldValueFromSidebar("subject.process.cmdline");
+      }
+
+      events_for_children_waiting = [];
+      w = $(document).width();
+      h = $(document).height(); 
+
+      newelem = $('<div>').attr("id", "output").attr("title",`Потомки процесса ${commandline}`)
+      .dialog(
+        {
+          height: h - 100,
+          width: w - 100,
+          close: function(event, ui){
+            $(this).empty();
+            $(this).remove();
+            treeBranchEvents = [];
+          }
+        }
+      ).prev(".ui-dialog-titlebar").css("background","#114e77").css("color", "white");
+
+      siemUrl = window.location.origin;
+
+      count = 100;
+
+      let msgid = getFieldValueFromSidebar("msgid");
+      let uuid = getFieldValueFromSidebar("uuid");
+      let time = getTimeValueFromSidebar();
+
+      let timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+      if(!timeParsed._isValid) {
+        timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+      }
+      let timeto = timeParsed.toDate();
+      let ttimeto = timeto.getTime()/1000 + 86400; // на сутки вперед
+
+      gtfrom = ttimeto - 86400 - 600; // и на 10 минут назад на всякий случай
+      gtto = ttimeto;
+
+
+      treeBranchEvents = [];
+
+      // Если текущее событие - событие запуска процесса, запускаем процесс построения дерева
+      if(msgid === '1' || msgid === '4688') {
+        getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranchReverse, "", ttimeto - 86400 - 600, ttimeto);    //TODO: со временем путаница и не удобно, надо распутаться
+      }
+      // Иначе ищем доступными средствами соответсвующее событие запуска процесса 
+      else {
+        getdata(siemUrl,
+          `object.process.guid = '${object_process_guid}' and msgid = 1`,
+          1, 
+          function(e) {
+            let uuid = e[0]['uuid'];
+            getdata(siemUrl, `uuid = '${uuid}'`, count, processTreeBranchReverse, "", ttimeto - 86400 - 600, ttimeto);    //TODO: со временем путаница и не удобно, надо распутаться
+          },
+        "",
+        ttimeto - 86400, // 1 сутки назад
+        ttimeto);
+      }
+    });
+  //}
+}
+
+
 /**
  * Получить значение поля события из правой панели 
  * @param {str} fieldName название поля
  * @returns {str} значение поля
  */
 function getFieldValueFromSidebar(fieldName) {
+  /* 27.1 */
+  let root = document.body;
+  let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+  if(ips_shell_remote_app_elem.length === 1) {
+    /* 27.3 */
+    let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+    root = siem_core[0].shadowRoot;
+  }
+  let tmp = $(`mc-dt:contains("${fieldName}")`, root);
+  if (tmp.length === 1) {
+    let fieldValue = tmp.next().text().trim('↵');
+    return fieldValue;
+  }
+  else if (tmp.length > 1){
+      tmp = tmp.filter( function() {return $(this).text() === " " + fieldName + " "});
+      let fieldValue = tmp.next().text().trim('↵');
+      return fieldValue;
+  }
+
+  /* Good old versions */
+
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
     let shadowRoot = legacy_events_page[0].shadowRoot;
@@ -812,10 +1336,35 @@ function getFieldValueFromSidebar(fieldName) {
  * @returns {str} время в виде строки вида 20.06.2023 13:18:49
  */
 function getTimeValueFromSidebar() {
+  /* 27.1 */
+  let root = document.body;
+  let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+  if(ips_shell_remote_app_elem.length === 1) {
+    /* 27.3 */
+    let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+    root = siem_core[0].shadowRoot;
+  }
+  /* 27.2 */
+  let newest_sidebar_header = $("div.layout-padding-no-left.mc-sidebar-header__title.flex", root);
+  if(newest_sidebar_header.length === 1) {
+    let time = newest_sidebar_header.text().trim("↵");
+    time = time.replace(",","");
+    console.log(time);
+    return time;
+  }
+  /* 27.1 */
+  let new_sidebar_header = $("div.layout-padding_no-left.mc-sidebar-header__title.flex", root);
+                                  
+  if(new_sidebar_header.length === 1) {
+    let time = new_sidebar_header.text().trim("↵");
+    console.log(time);
+    return time;
+  }
+
+  /* Good old versions */
   let legacy_events_page = $("legacy-events-page");
   if(legacy_events_page.length === 1) {
     let shadowRoot = legacy_events_page[0].shadowRoot;
-    // class="layout-padding_no-left mc-sidebar-header__title flex ng-binding"
     let time = $("mc-sidebar-opened > header > div.layout-row.flex > div > div", shadowRoot).text().trim("↵");
     return time;
   }
@@ -1063,6 +1612,23 @@ function ExtractHashFromHashValue(hash_to_check) {
 
 
 /**
+ * Обобщенный обработчик для добавления обработчика события onclick для названия поля события.
+ * По клику извлекает значение поля и передаёт его текст в качестве параметра при вызове callback-функции.
+ * Значение, возвращенное из callback интерпретируется как ссылка на внешний ресурс, корая открывается в новой вкладке.
+ * @param {Node} addedNode добавляемый на страницу узел
+ * @param {*} callback callback для получения ссылки на основе значения поля
+ */
+async function CommonFieldClickNew(addedNode,  callback) {
+  let element = $(addedNode);
+  element.click(async function (){
+    let valueNodes = $(this).next();
+    let value = valueNodes[0].outerText;
+    let link = await callback(value);
+    window.open(link, "_blank"); 
+  });
+} 
+
+/**
  * Возвращает ссылку на страницу VT для файла с определённым хешем
  * @param {string} object_hash значение поля object.hash (или других аналогичных полей)
  * @returns 
@@ -1117,6 +1683,17 @@ function GetVirusTotalLinkForHash(object_hash) {
     return external_link;
   }
 };
+
+/**
+ * Возвращает ссылку из поля external_link
+ * @param {string} external_link значение поля external_link (ссылка на внешний ресурс)
+ * @returns 
+ */
+async function GetExternalLinkNew(external_link) {
+  // //TODO: проверить, что значение начинается на 'http'
+    return external_link;
+};
+
 
 /**
  * Возвращает ссылку на PTKB с фильтром, содержашим id события для полнотекстового поиска нужно правила нормализации
@@ -1242,51 +1819,112 @@ async function ipfieldChangeObserver(addedNode, fieldname){
 }
 
 
+// /**
+//  * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+//  * @param {*} addedNode добавляемый элемент на страницу
+//  */
+// async function uuidChange(addedNode){
+//   // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+//   setTimeout(function(addedNode){
+//     // uuid меняется при клике на каждое новое событие, т.к. он уникален
+//     // это можно использоать для добавления/удаления элементов при необходимости
+//     let value_node_span = $("pdql-fast-filter", addedNode);
+  
+//     // нарисовать иконки при изменении значения поля uuid
+//     const value_span_observer = new MutationObserver(mutationList =>
+//     // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+//       setTimeout(function(changedElement){
+//         let sidebar = changedElement.closest('mc-sidebar');
+//         // нужно убрать старую иконку загрузки сабивентов
+//         $('.downloadsubeventsnormalizedicon').remove();
+//         // и нарисовать новую, если есть поле correlation_name
+//         let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+//         if(correlation_name.length > 0) {
+//           AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon'));
+//         }
+//       },
+//       500,
+//       value_node_span)
+//     );
+
+//     value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
+//     if (value_node_to_observe) {
+//       value_span_observer.observe(value_node_to_observe,{childList: true, subtree: true, characterDataOldValue: true,});
+//     }
+
+//     // нарисовать иконки загрузки событий при появлении uuid первый раз на странице
+//     let sidebar = $(addedNode).closest('mc-sidebar');
+//     let event_icon_type = $('event-icon-type', sidebar);
+//     let correlation_name = $("div[title=\"correlation_name\"]", sidebar);
+//     if(correlation_name.length > 0) {
+//       AddDownloadNormalizedSubeventsIcon(event_icon_type.next());
+//     }
+//     AddDownloadNormalizedIcon(event_icon_type.next());
+//   },
+//   500,
+//   addedNode);
+// }
+
+
 /**
- * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+ * Добавить обработчик появления значения элемента uuid в правой панели для размещения дополнительных иконок
  * @param {*} addedNode добавляемый элемент на страницу
  */
 async function uuidChange(addedNode){
   // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
   setTimeout(function(addedNode){
-    // uuid меняется при клике на каждое новое событие, т.к. он уникален
-    // это можно использоать для добавления/удаления элементов при необходимости
-    let value_node_span = $("pdql-fast-filter", addedNode);
-  
+
     // нарисовать иконки при изменении значения поля uuid
     const value_span_observer = new MutationObserver(mutationList =>
     // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
       setTimeout(function(changedElement){
-        let sidebar = changedElement.closest('mc-sidebar');
+        let sidebar = $(changedElement).closest('mc-sidebar');
         // нужно убрать старую иконку загрузки сабивентов
-        $('.downloadsubeventsnormalizedicon').remove();
+        $('.downloadsubeventsnormalizedicon', sidebar).remove();
         // и нарисовать новую, если есть поле correlation_name
-        let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+        let correlation_name = getFieldValueFromSidebar("correlation_name");
         if(correlation_name.length > 0) {
-          AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon'));
+          AddDownloadNormalizedSubeventsIcon($('.downloadnormalizedicon', sidebar));
         }
       },
       500,
-      value_node_span)
+      mutationList[0].addedNodes[0])
     );
 
-    value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
-    if (value_node_to_observe) {
-      value_span_observer.observe(value_node_to_observe,{childList: true, subtree: true, characterDataOldValue: true,});
+    //value_node_to_observe = addedNode.querySelector("pdql-fast-filter");
+    value_node_to_observe = $(addedNode).next("mc-dd");
+    if (value_node_to_observe.length != 0) {
+      value_span_observer.observe(value_node_to_observe[0], {childList: true, subtree: true, characterDataOldValue: true,});
     }
 
-    // нарисовать иконки загрузки событий при появлении uuid первый раз на странице
+
     let sidebar = $(addedNode).closest('mc-sidebar');
     let event_icon_type = $('event-icon-type', sidebar);
-    let correlation_name = $("div[title=\"correlation_name\"]", sidebar);
-    if(correlation_name.length > 0) {
-      AddDownloadNormalizedSubeventsIcon(event_icon_type.next());
+    if (event_icon_type.length === 0) {
+      /* 27.1 */
+      event_icon_type = $('pt-siem-event-icon-type', sidebar);
     }
-    AddDownloadNormalizedIcon(event_icon_type.next());
+    if (event_icon_type.length === 0) {
+      /* 27.3 */
+      event_icon_type = $('siem-event-icon-type', sidebar);
+    }
+  
+    $('.downloadsubeventsnormalizedicon', sidebar).remove();
+    // let correlation_name = $("div[title=\"correlation_name\"]", sidebar)
+    let correlation_name = getFieldValueFromSidebar("correlation_name");
+    if(correlation_name.length > 0) {
+          AddDownloadNormalizedSubeventsIcon(event_icon_type);
+    }
+    AddDownloadNormalizedIcon(event_icon_type);
+
+
+    // AddGetShareableEventLinkIcon(event_icon_type);
   },
   500,
   addedNode);
 }
+
+
 
 /**
  * Добавить обработчик появления значения элемента uuid в правой панели для размещения дополнительных иконок
@@ -1297,6 +1935,14 @@ async function shareableLinkIconAdd(addedNode){
   setTimeout(function(addedNode){
     let sidebar = $(addedNode).closest('mc-sidebar');
     let event_icon_type = $('event-icon-type', sidebar);
+    if (event_icon_type.length === 0) {
+      /* 27.1 */
+      event_icon_type = $('pt-siem-event-icon-type', sidebar);
+    }
+    if (event_icon_type.length === 0) {
+      /* 27.3 */
+      event_icon_type = $('siem-event-icon-type', sidebar);
+    }
     AddGetShareableEventLinkIcon(event_icon_type);
   },
   500,
@@ -1321,6 +1967,10 @@ function AddDownloadNormalizedSubeventsIcon(addedNode) {
     let time = getTimeValueFromSidebar();
     
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
+
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1350,6 +2000,9 @@ function AddDownloadNormalizedIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1363,6 +2016,9 @@ function AddDownloadNormalizedIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime()/1000; 
     gtfrom = ttimeto; 
@@ -1390,23 +2046,206 @@ function AddGetShareableEventLinkIcon(addedNode) {
     let uuid = getFieldValueFromSidebar('uuid');
     let time = getTimeValueFromSidebar();
     timeParsed = moment(time, "DD.MM.YYYY hh:mm::ss");
+    if(!timeParsed._isValid) {
+      timeParsed = moment(time, "MM/DD/YY hh:mm:ss A");
+    }
     timeto = timeParsed.toDate();
     ttimeto = timeto.getTime(); 
     let link = `${siemUrl}/#/events/view?where=uuid=%22${uuid}%22&period=range&start=${ttimeto}&end=${ttimeto}`;
     console.log(link);
     navigator.clipboard.writeText(link);
+    
+    let searchNode = document.body;
+    let ips_shell_remote_app_elem = $("body > ips-root > main > ips-shell-remote-app");
+    if(ips_shell_remote_app_elem.length === 1) {
+      /* 27.3 */
+      let siem_core = $("siem-core", ips_shell_remote_app_elem[0].shadowRoot);
+      searchNode = siem_core[0].shadowRoot;
+    }
     let legacy_events_page = $("legacy-events-page");
-    let searchNode;
     if(legacy_events_page.length === 1) {
       searchNode = legacy_events_page[0].shadowRoot;
     }
-    else {
-      searchNode = document;
-    }
+
     let icon = $(".shareableeventlink", searchNode);
     $('<div>Ссылка в буфере обмена...</div>').insertAfter(icon).show().delay(500).fadeOut();
   })
 }
+
+/**
+ * Добавить обработчик появления и изменения значения элемента uuid в правой панели
+ * @param {*} addedNode добавляемый элемент на страницу
+ */
+async function uuidChangeProcessAssets(addedNode){
+  // костылим ожидание, пока загрузится всё в правой панели, 500 мс должно хватить
+  setTimeout(function(addedNode){
+    // uuid меняется при клике на каждое новое событие, т.к. он уникален
+    // это можно использоать для добавления/удаления элементов при необходимости
+    value_node = $(addedNode).next();
+    //let value_node_span = $("pdql-fast-filter", addedNode);
+  
+
+
+    const value_node_span_observer = new MutationObserver(mutationList => {
+      let subject_name = $(mutationList[0].target.parentNode)
+      console.log(subject_name);
+      setTimeout(function(changedElement){
+        ProcessAssets(changedElement);
+
+
+      },
+      100,
+      subject_name)
+    });
+
+   // value_node_span_to_observe = 
+    value_node_span_to_observe = $(addedNode).next();
+    if (value_node_span_to_observe) {
+      value_node_span_observer.observe(value_node_span_to_observe[0],{childList: true, subtree: true, characterDataOldValue: true,});
+    }
+
+    ProcessAssets(addedNode);
+
+
+  },
+  100,
+  addedNode);
+}
+
+function ProcessAssets(addedNode) {
+  let sidebar = $(addedNode).closest('mc-sidebar');
+  // список полей активов, для которых надо получать описание и ссылку на XDR
+  let asset_fields = ['event_src.asset', 'src.asset', 'dst.asset'];
+  let siemUrl = origin;
+  asset_fields.forEach((asset_field) => {
+
+
+    //let asset_element = $(`div[title=\"${asset_field}\"]`, sidebar);
+    let asset_element;
+    let tmp = $(`mc-dt:contains("${asset_field}")`, sidebar);
+    if (tmp.length === 1) {
+      asset_element = tmp;
+    }
+    else if (tmp.length > 1){
+        tmp = tmp.filter( function() {return $(this).text() === " " + asset_field + " "});
+        asset_element = tmp;
+    }
+
+    //let asset_element = $(`mc-dt:contains("${asset_field}")`);
+    let value_node = asset_element.next();
+    //let asset_id = $("div.ng-binding.ng-isolate-scope.ng-hide", value_node).text(); //там написан asset_id в виде uuid
+    let asset_name = value_node.text();
+    // console.log(asset_id);
+
+    if(asset_name != "") {
+      enrichEventCardWithAssetInfo(asset_name, siemUrl, value_node);
+    }
+  });
+}
+
+function enrichEventCardWithAssetInfo(src_asset_name, siemUrl, value_node) {
+  //Запрос по активам для получения описания и идентификатора агента XDR
+  // let request_params = {
+  //   "pdql": "select(Host.@Description as description, Host.Softs<XDRAgent>.AgentID AS xdrAgentId) ",
+  //   "additionalFilterParameters": {
+  //     "assetIds": [src_asset_id]
+  //   },
+  //   "includeNestedGroups": false,
+  //   "utcOffset": "+03:00"
+  // };
+
+  let request_params = {
+    "pdql": `filter(Host[@Name = '${src_asset_name}']) |select(Host.@Description as description, Host.Softs<XDRAgent>.AgentID AS xdrAgentId)`,
+    "additionalFilterParameters": {
+      //
+    },
+    "includeNestedGroups": false,
+    "utcOffset": "+03:00"
+  };
+
+  $.ajax({
+    type: "POST",
+    url: `${siemUrl}/api/assets_temporal_readmodel/v1/assets_grid`,
+    dataType: "json",
+    contentType: "application/json; charset=utf-8",
+    data: JSON.stringify(request_params),
+    success: function (msg) {
+      // console.log(msg);
+      let pdqlToken = msg['token'];
+      let pdqlTokenEncoded = encodeURIComponent(pdqlToken);
+      $.ajax({
+        type: "GET",
+        url: `${siemUrl}/api/assets_temporal_readmodel/v1/assets_grid/data?limit=1&pdqlToken=${pdqlTokenEncoded}`,
+        success: async function (msg) {
+          let agetId = msg['records'][0]['xdrAgentId'];
+          let xdr_div = $('<span>').addClass('pt-text-overflow').addClass('monkey-asset-edr-info');
+
+          let xdr_i = $('<i>')
+          .addClass('pt-icons')
+          .addClass('flex-none')
+          .addClass('monkeymagicicon');
+          
+          if(agetId != null) {
+            let agent_info = await DiscoverEdrAgentByHash(agetId);
+            let agent_title = agent_info['data']['agent']['info']['tags'];
+            agent_title += "\n" + "Сервер агентов: " + agent_info['data']['service']['name'];
+            agent_title += "\n" + "Группа агентов: " + agent_info['data']['group']['info']['name']['ru'];
+
+
+            xdr_i.addClass('pt-icons-protection-active_16')
+                 .attr('title', 'Открыть в новой вкладке страницу агента EDR' + '\n\n'+ agent_title);
+            xdr_div.click(async function(event){
+              console.log(`XDR agent ID: ${agetId}`);
+                let service = agent_info['data']['service']['hash'];
+                let hash = agent_info['data']['agent']['hash'];
+                let agent_url = `${siemUrl}/#/edr/services/${service}/agents/${hash}`
+              
+              window.open(agent_url);
+            });
+          }
+          else{
+            xdr_i.addClass('pt-icons-protection-off_16')
+                 .attr('title', 'На узле не установлен агент EDR');
+          }
+
+          xdr_div.append(xdr_i);
+          //let value_node_span = $("asset-card-link span.mc-link", value_node);
+          let value_node_span = $("span .mc-link__text.ng-star-inserted", value_node);
+          value_node_span.next(".monkey-asset-edr-info").remove();
+          value_node_span.after(xdr_div);
+
+          let description = msg['records'][0]['description'];
+          // console.log(`Asset description: ${description}`);
+          let description_div = $('<span>').text(description)
+                                           .attr('title', description)
+                                           .addClass('pt-text-overflow');
+          xdr_div.append(description_div);
+        },
+        error: function (msg) {
+          console.log('не повезло, что-то сломалось 2');
+        }
+      });
+    },
+    error: function (msg) {
+      console.log('что-то опять пошло не так 2');
+    }
+  });
+}
+
+async function DiscoverEdrAgentByHash(hash) {
+  // https://<siem>/api/edr/v1/agents/b84b8efbf5042f050c85a58061f1fd1d/discovery
+  siemUrl = origin;
+  var request = $.ajax
+  (
+      {
+          type: "GET",
+          url: `${siemUrl}/api/edr/v1/agents/${hash}/discovery`,
+      }
+  );
+  response = await request;
+  return response;
+}
+
 
 async function popup_event_handler() {
   let applicationNode = null;
@@ -1423,9 +2262,45 @@ async function popup_event_handler() {
       // получаем от SIEM список поддерживаемых полей и для каждого поля парсим из правого сайдбара значение
       let msg = await getTaxonomy();
       let fields = msg['fields'];
-      fields.forEach( x => {
-          params[x.name] = $(`div[title=\"${x.name}\"] + div > div > div:first`, applicationNode).text().trim('↵');
-      });
+      if(applicationNode != null && applicationNode.length != 0) {
+          fields.forEach( x => {
+            params[x.name] = $(`div[title=\"${x.name}\"] + div > div > div:first`, applicationNode).text().trim('↵');
+        });
+      }
+      else {
+        let ips_shell_remote_app = $("ips-shell-remote-app");
+        if( ips_shell_remote_app.length === 1) { /* 27.3 */
+          let shadowRootOne = ips_shell_remote_app[0].shadowRoot;
+          let siem_core = $("siem-core", shadowRootOne);
+          let shadowRootTwo = siem_core[0].shadowRoot;
+          fields.forEach( x => {
+            let tmp = $(`mc-dt:contains("${x.name}")`, shadowRootTwo);
+            params[x.name] = "";
+            if (tmp.length === 1) {
+                params[x.name] = tmp.next().text().trim('↵');
+            }
+            else if (tmp.length > 1){
+                tmp = tmp.filter( function() {return $(this).text() === " " + x.name + " "});
+                params[x.name] = tmp.next().text().trim('↵');
+            }
+        });
+        }
+        else { /* 27.1 */ //TODO: надо проверить для 27.2 и обработать напильником по месту
+          fields.forEach( x => {
+              let tmp = $(`mc-dt:contains("${x.name}")`);
+              params[x.name] = "";
+              if (tmp.length === 1) {
+                  params[x.name] = tmp.next().text().trim('↵');
+              }
+              else if (tmp.length > 1){
+                  tmp = tmp.filter( function() {return $(this).text() === " " + x.name + " "});
+                  params[x.name] = tmp.next().text().trim('↵');
+              }
+          });
+        }
+      }
+
+     
       params['time'] = getTimeValueFromSidebar();
   }
   catch(err)
@@ -1543,12 +2418,9 @@ async function applyFieldAliases(changedElement) {
   }
 }
 
-
-
-
 var gtfrom = 0;
 var gtto = 0;
-let icondataurl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAAABGdBTUEAALGPC/xhBQAAAAJiS0dEAP+Hj8y/AAAACXBIWXMAAA1nAAANZwG8Jya1AAAAB3RJTUUH5wEdDiU4kuliGwAABGBJREFUSMeNlV1sU2UYx3/v+Wg7t9LRtZRNZARGhM0hH3KB6ASFRASJiTFkRhMSLvRGjCYaEy8kJt7oBYkXRDAxITEsokFEoxdC7LZA5oRByBhjK8SxZXRfrK1td9qevq8X55R2DD+ek5z34n3+/+fzfR7BPGl3T0HOq2qUiQCUKIi0N6fcu455CHE/XCHN4nptp/cJX4PhcwhsyxrPXZS/6le0griPQsyHF1Et+jsNe1vCqwnhdfDkmGaYa1PjZ4qHxTV9HoWohCepfrH207Y1z7F0vmuAIs45ugYT72d+DFRQiPYKleKeyNF9DU+i8WCRXOCb8Yk39J/K9HorUBTFFcVNYmvg41dXPr3AdmW8y/H7b2ywknZYKpKa44EMcTDQXtsw6dluvPaP1stefM1v9pJ8YjzZwefatN4S1A+vfeuFYKM5o+0jwH+JIMR1bbu5Ljj3zN162am3HFx1cK8epp9FbPsX98vi5yZpWmkk3jyT1Hz7N5p+bCZp+l9wEDQxiY2fjaZvv1HVFAZsLMKuQpw/mCDABla5fRCjjxQRNlMPQBgLG4MwVU2GsqUBEokHgEFOUEWEMfrYRRvQxfdUUc0APbzOWsCDRAISZRuZy6Nb6lFuT2U4TSNbMJEM8gtB4AceYQ9JrjDCKd6mxvULRslc1gpHLqXu3CveKCk2kKeHGR5lCcf5Eo3n8XELjYeZZMzV1LjDpVThiKGfjK8488Fj1XkAchiYpBkgSIht5LjIGBNcJY1ABywA8vTRn4l/pp/UW4uiJ3l9xG8v22rWofidMEtZTRgND9UUue4GqJEiw0783OXc3NDZxEfaV+QNIK9/N3e+6me1HpayiU62sQybYaaQ5LCI0YiHDGO0Ue/Ef2PugPcOgOa8KmVhOzXexSJ6sblAJ3FmydIEXOUGQyxnd6lXbGUBdKA5D1NIVZQATJHgcVIM8RSCNawBniXADnaTYMp9D6oopIMspT9fSGUARZQwKzFYT4gp0qSZIsRmGmgmRBQFZCikcLKO4RwJy3MrDiS4yVY0/GxC8TLVwHJqCQKCZs6TYDFx8rcSVsQtJwARVegdlpJpioRQbs8H8eAh6MatCFFkGsmwLPRGFJUEQHds5DZZDExK81dV/EFhYpDlNrERukswzckliNjMqSgKhXTtaxWfKCUPRZSZUyJWmopGiclU9rGeXTXNkiw+Ckw4daWUqggmWSQxegbkMVOVb8rvfGj2UPRocfEodczRS/refFDUsAMPo0wTnZ09JIYqp4Mr7YDQ5Jt8sqL2FR4i74ZSitRDlm/5M8GH2hdKlse6XlLppxWUuCRGUutkXSNedIx7n0mBTgaGeU8cR1YuFr1sxaFQ/bJ7ojnTGKYKzU0mJIjS12Uf4KxQ81dbBYFDISBud8YXjTRlvBKbLBNcpfOvoROFd7XB+zcjC+eos6mkT7YZL/k2eusgN2P12ae1Ls1iAZwHDeLSsrM0bbEKgEjKWZ+b0Y4F2n8DLrW7Px/mhBwAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjMtMDEtMjlUMTQ6Mzc6NTErMDA6MDAjXia7AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDIzLTAxLTI5VDE0OjM3OjUxKzAwOjAwUgOeBwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAAASUVORK5CYII=";
+let icondataurl = "data:image/png;base64,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";
 let icon16dateurl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAABlVBMVEUAAABUWW6ChZRbYHRRV25cYHOYinJhYm1RVmtSV21VWm+rrbhTWG1iZnlcYXU0OlJWW3BnZ3AlK0ZZXnJxdYd4fY1PVGqHipm9v8fb3OBBS21PVGmPk6BiY2+ajHGRiX3U1duViHKumnOQhXJeYW+BeW6trbCAeW41Pl2rrbg1O1Opq7YQFzSWmaZ1eYqxtL1QVWp3e45LUmxwbXBJUW2De3HDqnQvP2xfYW93c3Di4+bi4+f////mw3W2rJv29/r3+Pr6+/z7+/v4+PjtyHW5s6z8/P7PztCzqpu2sKnn6Ovm5+ucqsCMoL3Gy9X8/P3Wt3S8t6/m5+y1pojdvHPVt3SropWKlqqRuORrrfVskb/n5+u7qYPcu3XtyXfmwnSLj41oqfJVpv9mkcT6+vuysK7TtXXEqnSum3ORiHVgfJ9fg6+fqbz6+vq2sKi5o3SynXS0nnO0nnLIrHK2sKfa3OG8qoX+1Hf50Xjxy3f60nj+1XfFr4H/1nf+1HinmHz0zXfCqXW5onTTtnbwy3fuyXfiwXbk7/kLAAAAOnRSTlMAAAAAAAAAAAAAAAAAAAAAAAAKQXaGIJzr/BU7tUXC7/7T/Mc1sfixIdgVzwmyaPwVtyq6GpbvC02GFDa/iQAAAAFiS0dEPKdqYc8AAAAJcEhZcwAADWcAAA1nAbwnJrUAAAAHdElNRQfnAR0OIht/z4WuAAABCUlEQVQY02NgYGRiFhIWERUVERZiZmJkYGBhZBUTl5C0spKUEBdjZWRhYJOSlrG2AQNrGWkpNgZZOXkFGyhQkJeTZVC0tbO3cXC0sXFytrG3s1VkUHJxdXP38PTy9vH183d1UWJQDggMCg4JDQuPiIyKDgxQZlBRVbOOiY2LT0hMSrZSU1dhYNfQTElNS8/IzMrOydXUYGfg0NJ2yAvNLygsKi5x0NbiYODU0S0tK6+orKyqLivV1eFk4OLW06+prQOC2hp9PW4uBkYeA8P6hsampsaGekMDHqBnePmMjJtbWltbmo2N+HgZGBgY+QVMTM3a2sxMTQT4gQqAIoKM5haWlhbmQAYDAwC+0TkTtbceAAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyMy0wMS0yOVQxNDozMjozMiswMDowMDLw/uUAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjMtMDEtMjlUMTQ6MzI6MzIrMDA6MDBDrUZZAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAABJRU5ErkJggg=="
 
 var commandline = '';
@@ -1556,17 +2428,8 @@ var treeBranchEvents = [];
 // идентификаторы событий, для которых ожидаем получение процессов потомков
 var events_for_children_waiting = [];
 var fields = [];
-options = {};
+var options = {};
+
 GetOptionsFromStorage().then(() => {
-  // Если включен параметр "Отключить новое поведение сортировки при аггрегации (R25.1 и выше)", то
-  // подгрузим код из файла xhr_override.js, который будет убирать из параметров запроса лишнее поле, отвечающее за
-  // новый способ сортировки
-  if('options' in options && 'disable_agg_sort' in options.options && options.options.disable_agg_sort == true) {
-    var s = document.createElement('script');
-    s.src = chrome.runtime.getURL('xhr_override.js');
-    s.onload = function() {
-        this.remove();
-    };
-    (document.head || document.documentElement).appendChild(s);
-  }
+  ;
 });

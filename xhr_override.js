@@ -12,33 +12,51 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-originalSend = window.XMLHttpRequest.prototype.send;
-window.XMLHttpRequest.prototype.send = overridedSend;
+console.log(window.XMLHttpRequest.prototype.send);
+if(!(window.XMLHttpRequest.prototype.send.toString() === overridedSend.toString()))
+{
+  originalSend = window.XMLHttpRequest.prototype.send;
+  window.XMLHttpRequest.prototype.send = overridedSend;
+}
+options = globalMonkeyOptions;
 
 function overridedSend(data){
-     if(this.onreadystatechange){
+    if(this.onreadystatechange){
        this._onreadystatechange = this.onreadystatechange;
-     }
-
-     if(data !== null){
-        try {
-            // console.log(data);
+    }
+    
+      if(this.__zone_symbol__xhrURL) {   
+        //console.log(options);    
+        if(this.__zone_symbol__xhrURL.includes('/api/edr/assets')) {
+          if('options' in options && 'disable_edr_integration' in options.options && options.options.disable_edr_integration == true) {
+              //console.log("An apple a day keeps the doctor away :)");
+              return;
+          }
+        }
+      
+        if(this.__zone_symbol__xhrURL.includes('/api/whitelists/') && this.__zone_symbol__xhrURL.includes('/insert')
+           && 'add_input_for_IOCs_description' in options.options && options.options.add_input_for_IOCs_description == true) {
             let params = JSON.parse(data); 
-            // удалим ненужную сортировку
-            delete params.filter.groupByOrder; // удаляем 
-            data = JSON.stringify(params);
-        }
-        catch (error) {
-            //console.log(error);
-            ; //просто пропустим ошибку, какой она бы не была, 
-              // наверняка просто попался какой-то запрос с параметрами другого формата
-              // TODO: наверное стоит делать нормально, но пока и так сойдет
-        }
-
-        // console.log(data);
-     }
-     this.onreadystatechange = onReadyStateChangeReplacement;
-     return originalSend.apply(this, arguments);
+            let description_node = document.querySelector(".iocs_description");
+            if (description_node == null) {
+              let ips_shell_remote_app_node = document.querySelector("ips-shell-remote-app");
+              let siem_core_node = ips_shell_remote_app_node.shadowRoot.querySelector("siem-core");
+              description_node = siem_core_node.shadowRoot.querySelector(".iocs_description")
+            }
+            let description = ""; // если не найдется элемент с описанием, то используем пустую стоку, чтобы не падать, а то больно
+            if (description_node != null) {
+              description = description_node.value;
+            }
+            let user = description_node.getAttribute("user"); //имя пользователя, который внес изменения
+            let token = description_node.getAttribute("token"); //token табличного списка, куда будет добавляться описание
+            if(this.__zone_symbol__xhrURL.includes(token)) {
+              params[2] = `${description} (${user})`; //'Каждый незаполненый дескрипшен заставляет грустить одного аналитика в SOC'
+              data = JSON.stringify(params);
+            }
+          }
+    }
+    this.onreadystatechange = onReadyStateChangeReplacement;
+    return originalSend.apply(this, arguments);
 }
 
 function onReadyStateChangeReplacement(){
