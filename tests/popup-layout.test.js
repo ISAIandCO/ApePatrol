@@ -14,4 +14,10 @@ describe("Firefox popup sizing", () => {
     expect(script).toContain("output.style.zoom = String(state.processScale)");
     expect(script).not.toContain("output.style.fontSize");
   });
+  it("loads process data when Tree or Timeline is selected before a graph exists", async () => {
+    const script = await readFile(new URL("../src/popup/popup.js", import.meta.url), "utf8");
+    expect(script).toContain("if (!state.graph) await loadProcessGraph()");
+    expect(script).toContain('selectProcessMode("tree")');
+    expect(script).toContain('selectProcessMode("timeline")');
+  });
 });

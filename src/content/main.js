@@ -13,6 +13,7 @@ import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildProcessGraph, buildProcessSearchPredicate } from "../siem/process/graph.js";
+import { createSiemBackgroundFetch } from "./siem-transport.js";
 
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
@@ -20,8 +21,6 @@ const PROCESS_FIELDS = [
   "subject.process.guid", "object.process.name", "object.process.parent.name", "object.process.cmdline",
   "object.account.session_id", "correlation_name",
 ];
-
-let currentProcessController = null;
 
 async function initialize() {
   const response = await browser.runtime.sendMessage({ type: "settings:get" });
@@ -32,7 +31,11 @@ async function initialize() {
   window.postMessage({ source: "apepatrol", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
 
   const adapter = new SiemDomAdapter();
-  const client = new SiemApiClient(location.origin);
+  const client = new SiemApiClient(location.origin, {
+    fetchImpl: createSiemBackgroundFetch(),
+    xhrFactory: null,
+    timeout: 30000,
+  });
   const tableTools = new TableListTools(client);
   const features = [
     new EventFieldActions(settings),
@@ -100,8 +103,6 @@ async function initialize() {
 async function buildProcessContext(client, event, settings) {
   const host = event["event_src.host"];
   if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
-  currentProcessController?.abort();
-  currentProcessController = new AbortController();
   const where = buildProcessSearchPredicate(host);
   const range = aroundTime(event.time, 86400);
   const scope = settings.searchScope.mode === "selected" ? {
@@ -112,7 +113,7 @@ async function buildProcessContext(client, event, settings) {
   } : settings.searchScope.mode === "all" ? { searchType: "all" } : {};
   const request = (requestScope) => client.searchEvents({
     where, select: PROCESS_FIELDS, ...range, scope: requestScope,
-    limit: settings.process.maxNodes, signal: currentProcessController.signal,
+    limit: settings.process.maxNodes,
   });
   let result;
   try {

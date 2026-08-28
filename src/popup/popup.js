@@ -5,7 +5,7 @@ import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
 
-const state = { tab: null, context: null, settings: null, related: [], graph: null, processMode: "tree", processScale: 1, collapsed: new Set(), lists: [], knowledgeBaseUrl: null };
+const state = { tab: null, context: null, settings: null, related: [], graph: null, processMode: "tree", processScale: 1, processLoading: null, collapsed: new Set(), lists: [], knowledgeBaseUrl: null };
 const byId = (id) => document.getElementById(id);
 const setStatus = (message) => { byId("status").textContent = message; };
 const showError = (target, error) => { setSafeText(target, error?.message ?? String(error)); };
@@ -140,6 +140,36 @@ function renderProcess() {
   }
 }
 
+function renderProcessMode() {
+  for (const mode of ["tree", "timeline"]) {
+    const button = byId(`process-${mode}-mode`);
+    button.classList.toggle("active", state.processMode === mode);
+    button.setAttribute("aria-pressed", String(state.processMode === mode));
+  }
+}
+
+async function loadProcessGraph() {
+  if (state.processLoading) return state.processLoading;
+  const controls = ["load-process", "process-tree-mode", "process-timeline-mode"].map(byId);
+  controls.forEach((button) => { button.disabled = true; });
+  byId("process-output").textContent = "Building graph…";
+  state.processLoading = sendToContent({ type: "siem:process" })
+    .then((response) => { state.graph = response.graph; renderProcess(); })
+    .catch((error) => { showError(byId("process-output"), error); throw error; })
+    .finally(() => {
+      state.processLoading = null;
+      controls.forEach((button) => { button.disabled = false; });
+    });
+  return state.processLoading;
+}
+
+async function selectProcessMode(mode) {
+  state.processMode = mode;
+  renderProcessMode();
+  if (!state.graph) await loadProcessGraph();
+  else renderProcess();
+}
+
 async function downloadEvent() {
   const event = state.context.event;
   const timestamp = sanitizeFilenamePart(event.time);
@@ -190,6 +220,7 @@ async function initialize() {
   const related = await sendToContent({ type: "siem:related" });
   state.related = related.actions;
   renderRelated();
+  renderProcessMode();
   renderProcess();
   if (state.context.event.correlation_name) {
     const ruleContext = await sendToContent({ type: "siem:rule-context" });
@@ -203,13 +234,10 @@ byId("copy-json").addEventListener("click", () => navigator.clipboard.writeText(
 byId("download-json").addEventListener("click", () => downloadEvent().catch((error) => showError(byId("event-json"), error)));
 byId("copy-link").addEventListener("click", async () => navigator.clipboard.writeText(await eventLink()));
 byId("open-rule").addEventListener("click", () => state.knowledgeBaseUrl && browser.runtime.sendMessage({ type: "tabs:open", url: state.knowledgeBaseUrl }));
-byId("load-process").addEventListener("click", async () => {
-  byId("process-output").textContent = "Building graph…";
-  try { state.graph = (await sendToContent({ type: "siem:process" })).graph; renderProcess(); } catch (error) { showError(byId("process-output"), error); }
-});
+byId("load-process").addEventListener("click", () => loadProcessGraph().catch(() => {}));
 byId("process-search").addEventListener("input", renderProcess);
-byId("process-tree-mode").addEventListener("click", () => { state.processMode = "tree"; renderProcess(); });
-byId("process-timeline-mode").addEventListener("click", () => { state.processMode = "timeline"; renderProcess(); });
+byId("process-tree-mode").addEventListener("click", () => selectProcessMode("tree").catch(() => {}));
+byId("process-timeline-mode").addEventListener("click", () => selectProcessMode("timeline").catch(() => {}));
 byId("process-zoom-out").addEventListener("click", () => { state.processScale = Math.max(.7, state.processScale - .1); renderProcess(); });
 byId("process-zoom-in").addEventListener("click", () => { state.processScale = Math.min(1.6, state.processScale + .1); renderProcess(); });
 byId("vt-lookup").addEventListener("click", async () => {

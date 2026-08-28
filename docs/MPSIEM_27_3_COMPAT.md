@@ -21,7 +21,7 @@ The adapter is intentionally R27.3-first, not R27.3-only. It uses capability det
 | POST | `/api/whitelists/{token}/insert` | Table List add / IOC | write | native workflow preserved |
 | POST | `/api/whitelists/{token}/remove` | Table List remove | write | unavailable |
 
-All calls check HTTP status. 401/403 are not retried. 404 becomes `unsupported`; timeouts, invalid JSON and network errors are distinct. Cached metadata is cleared when a content context is destroyed or origin registration changes.
+All calls use an authenticated background XHR so Firefox does not bind long-running searches to the SIEM page lifecycle. The proxy accepts only declared method/path pairs from a configured SIEM tab and always resolves them against that tab's exact origin. Calls check HTTP status; 401/403 are not retried, 404 becomes `unsupported`, and timeouts, invalid JSON and network errors are distinct. Cached metadata is cleared when a content context is destroyed or origin registration changes.
 
 ## Native overlap
 

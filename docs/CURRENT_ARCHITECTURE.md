@@ -19,16 +19,18 @@ flowchart TD
   B -->|"dynamic registration"| C["ISOLATED content bundle"]
   C --> D["R27.3 DOM adapter"]
   C --> A["SiemApiClient"]
+  A -->|"allowlisted relative path"| B
+  B -->|"authenticated background XHR"| S["Configured SIEM origin"]
   C --> F["Feature modules"]
   B -->|"only when IOC description is enabled"| M["MAIN network bridge"]
   P["Popup"] -->|"message"| C
   P -->|"external fetch with local secret"| B
 ```
 
-- `src/background`: registration lifecycle, secret-backed external adapters, tab opening.
+- `src/background`: registration lifecycle, allowlisted same-origin SIEM proxy, secret-backed external adapters, tab opening.
 - `src/content`: per-instance orchestration and popup message API.
 - `src/page-bridge`: idempotent XHR/fetch bridge with endpoint allowlist, TTL and unpatch.
-- `src/siem/api`: fetch client, timeout/abort, cache and typed errors.
+- `src/siem/api`: transport-independent client, timeout/cache and typed errors.
 - `src/siem/dom`: R27.3 adapter and one debounced observer controller.
 - `src/siem/features`: field actions, related events, IOC, Table Lists and EDR UI.
 - `src/siem/process`: bounded local process graph.
@@ -37,4 +39,4 @@ flowchart TD
 
 ## Security invariants
 
-The built manifest has no `host_permissions` or `content_scripts`. Dynamic registration only follows a granted exact-origin permission. No key is returned by `settings:get`. External API calls are restricted to extension pages and require host plus Firefox data-collection permissions. MAIN bridge state contains only a one-use token/description/username for the selected table and expires after 30 seconds.
+The built manifest has no `host_permissions` or `content_scripts`. Dynamic registration only follows a granted exact-origin permission. Internal SIEM API messages are accepted only from a configured SIEM tab, resolve back to that exact origin and pass a method/path allowlist. No key is returned by `settings:get`. External API calls are restricted to extension pages and require host plus Firefox data-collection permissions. MAIN bridge state contains only a one-use token/description/username for the selected table and expires after 30 seconds.

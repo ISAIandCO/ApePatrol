@@ -1,6 +1,7 @@
 import { loadSecrets, loadSettings, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
+import { proxySiemApiRequest } from "./siem-proxy.js";
 
 const CONTENT_PREFIX = "apepatrol-content-";
 const BRIDGE_PREFIX = "apepatrol-bridge-";
@@ -174,11 +175,16 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
       case "content:ready":
         if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
         return { ok: true };
+      case "siem:api": {
+        if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
+        const origin = normalizeOrigin(new URL(sender.tab.url).origin);
+        return { ok: true, response: await proxySiemApiRequest(origin, message) };
+      }
       default:
         return undefined;
     }
   } catch (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: error.message, kind: error.kind ?? "feature-unavailable" };
   }
 });
 
