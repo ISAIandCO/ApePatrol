@@ -1,5 +1,6 @@
 import { loadSecrets, loadSettings, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
+import { isExtensionPageSender } from "../shared/runtime-sender.js";
 
 const CONTENT_PREFIX = "apepatrol-content-";
 const BRIDGE_PREFIX = "apepatrol-bridge-";
@@ -49,7 +50,9 @@ async function senderIsConfiguredSiem(sender) {
 }
 
 function assertExtensionPage(sender) {
-  if (sender.tab) throw new Error("This action is restricted to extension pages");
+  if (!isExtensionPageSender(sender, browser.runtime.getURL("/"))) {
+    throw new Error("This action is restricted to extension pages");
+  }
 }
 
 async function hasDataPermission(types) {

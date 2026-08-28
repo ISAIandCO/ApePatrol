@@ -1,6 +1,6 @@
 {
   "name": "apepatrol",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": true,
   "description": "Firefox investigation companion for MaxPatrol SIEM",
   "license": "Apache-2.0",
