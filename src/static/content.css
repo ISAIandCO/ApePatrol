@@ -1,6 +1,10 @@
 .apepatrol-field-action { margin-inline-start: 4px; padding: 1px 4px; border: 0; background: transparent; cursor: pointer; }
-.apepatrol-action-menu { position: fixed; z-index: 2147483647; display: grid; min-width: 220px; padding: 6px; border: 1px solid #64748b; border-radius: 6px; background: #fff; color: #111827; box-shadow: 0 8px 24px #0004; }
+.apepatrol-action-menu { position: fixed; z-index: 2147483647; display: grid; min-width: 260px; max-width: min(440px, calc(100vw - 12px)); max-height: calc(100vh - 12px); overflow: auto; padding: 7px; border: 1px solid #64748b; border-radius: 7px; background: #fff; color: #111827; box-shadow: 0 8px 24px #0004; font: 13px/1.35 system-ui, sans-serif; }
 .apepatrol-action-menu button { padding: 6px 8px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .apepatrol-action-menu button:hover { background: #e8f1fb; }
+.apepatrol-action-menu button:disabled { cursor: progress; opacity: .7; }
+.apepatrol-action-title { padding: 5px 8px; overflow-wrap: anywhere; }
+.apepatrol-action-heading { margin-top: 4px; padding: 6px 8px 3px; border-top: 1px solid #d7dde5; color: #4b5563; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.apepatrol-enrichment-result { max-height: 230px; margin: 5px 3px 3px; padding: 8px; overflow: auto; border: 1px solid #ccd4df; border-radius: 5px; background: #f4f7fa; color: #111827; white-space: pre-wrap; overflow-wrap: anywhere; }
 .apepatrol-ioc-description { display: block; width: 100%; margin-block: 8px; padding: 7px; }
 .apepatrol-field-alias { margin-inline-start: 4px; opacity: .72; font-size: .92em; }

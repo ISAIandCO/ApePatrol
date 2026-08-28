@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, LEGACY_LOCAL_SECRETS_KEY, LEGACY_SYNC_STORAGE_KEY, LOCAL_SECRETS_KEY, migrateLegacySettings, normalizeSettings, SYNC_STORAGE_KEY } from "../src/shared/settings.js";
+import { BUILTIN_PROVIDERS, DEFAULT_SETTINGS, LEGACY_LOCAL_SECRETS_KEY, LEGACY_SYNC_STORAGE_KEY, LOCAL_SECRETS_KEY, migrateLegacySettings, normalizeSettings, SYNC_STORAGE_KEY } from "../src/shared/settings.js";
 
 describe("settings schema", () => {
   it("normalizes a clean first install", () => expect(normalizeSettings()).toEqual(DEFAULT_SETTINGS));
@@ -14,7 +14,8 @@ describe("settings schema", () => {
     expect(settings.instances).toEqual(["https://siem.test"]);
     expect(settings.features.processTree).toBe(false);
     expect(settings.features.eventActions).toBe(true);
-    expect(settings.externalProviders).toEqual([]);
+    expect(settings.externalProviders).toHaveLength(BUILTIN_PROVIDERS.length);
+    expect(settings.externalProviders.every((provider) => provider.urlTemplate.startsWith("https://"))).toBe(true);
   });
   it("migrates the vt key mismatch and separates secrets", () => {
     const migrated = migrateLegacySettings({ options: { "vt-api-key": "old", llm_api_key: "llm", iplinks: [], hashlinks: [] } });

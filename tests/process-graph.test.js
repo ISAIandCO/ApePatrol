@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessGraph, buildProcessSearchPredicate } from "../src/siem/process/graph.js";
+import { buildProcessGraph, buildProcessSearchPredicate, orderProcessTree } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
@@ -20,6 +20,20 @@ describe("process graph", () => {
     expect(graph.nodes.find((node) => node.event.uuid === "c").parentId).toContain("guid:P");
   });
   it("deduplicates a GUID", () => expect(buildProcessGraph([event({ "object.process.guid": "A" }), event({ "object.process.guid": "A" })]).nodes).toHaveLength(1));
+  it("links a GUID-addressed child to a GUID parent by the parent's PID fallback", () => {
+    const parent = event({ uuid: "parent", "object.process.id": "20", "object.process.guid": "P" });
+    const child = event({ uuid: "child", time: "2026-01-01T00:00:01Z", "object.process.id": "30", "object.process.guid": "C", "object.process.parent.id": "20" });
+    const graph = buildProcessGraph([child, parent]);
+    expect(graph.nodes.find((node) => node.event.uuid === "child").parentId).toBe(graph.nodes.find((node) => node.event.uuid === "parent").id);
+  });
+  it("orders a tree as parent then descendants instead of grouping all equal depths", () => {
+    const graph = buildProcessGraph([
+      event({ uuid: "root-a", "object.process.id": "1" }),
+      event({ uuid: "root-b", time: "2026-01-01T00:00:01Z", "object.process.id": "2" }),
+      event({ uuid: "child-a", time: "2026-01-01T00:00:02Z", "object.process.id": "3", "object.process.parent.id": "1" }),
+    ]);
+    expect(orderProcessTree(graph).map((node) => node.event.uuid)).toEqual(["root-a", "child-a", "root-b"]);
+  });
   it("breaks cycles", () => {
     const graph = buildProcessGraph([
       event({ uuid: "a", "object.process.guid": "A", "object.process.parent.guid": "B" }),

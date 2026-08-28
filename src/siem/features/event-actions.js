@@ -1,13 +1,22 @@
 import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
-import { extractPreferredHash } from "../../shared/hash.js";
+import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
 import { fillUrlTemplate, parseSafeExternalUrl } from "../../shared/url.js";
 import { buildEventSearchUrl } from "./related-events.js";
 
 const ACTION_FIELDS = [
   "src.ip", "dst.ip", "event_src.host", "subject.account.name", "object.account.name",
-  "object.process.guid", "subject.process.guid", "object.process.name", "object.hash", "external_link", "uuid",
+  "object.process.guid", "subject.process.guid", "object.process.name", "object.hash", "subject.hash",
+  "file.hash", "src.domain", "dst.domain", "object.domain", "dns.query", "object.url", "url",
+  "external_link", "uuid",
 ];
+
+const API_PROVIDERS = Object.freeze([
+  { id: "virustotal", name: "VirusTotal API", types: ["ip", "hash", "domain", "url"] },
+  { id: "abuseipdb", name: "AbuseIPDB API", types: ["ip"] },
+  { id: "opentip", name: "Kaspersky OpenTIP API", types: ["ip", "hash", "domain", "url"] },
+  { id: "threatfox", name: "ThreatFox API", types: ["ip", "hash", "domain", "url"] },
+]);
 
 export class EventFieldActions {
   constructor(settings) {
@@ -19,7 +28,8 @@ export class EventFieldActions {
 
   onDomChanged({ event, adapter }) {
     if (!this.settings.features.eventActions) return;
-    for (const field of ACTION_FIELDS) {
+    const actionFields = new Set([...ACTION_FIELDS, ...Object.keys(event).filter((field) => iocFromField(field, event[field]))]);
+    for (const field of actionFields) {
       const value = event[field];
       const label = value && adapter.getEventFieldElement(field);
       if (!label || label.querySelector(":scope > .apepatrol-field-action")) continue;
@@ -49,14 +59,27 @@ export class EventFieldActions {
 
   openMenu(anchor, field, rawValue, event) {
     document.querySelector(".apepatrol-action-menu")?.remove();
-    const value = field.endsWith("hash") ? (extractPreferredHash(rawValue) ?? rawValue) : rawValue;
+    const ioc = iocFromField(field, rawValue);
+    const value = ioc?.value ?? rawValue;
     const menu = document.createElement("div");
     menu.className = "apepatrol-action-menu";
-    const add = (label, handler) => {
+    menu.setAttribute("role", "menu");
+    const title = document.createElement("strong");
+    title.className = "apepatrol-action-title";
+    title.textContent = `${field}: ${String(value).slice(0, 120)}`;
+    menu.append(title);
+    const add = (label, handler, { keepOpen = false } = {}) => {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = label;
-      button.addEventListener("click", async () => { await handler(); menu.remove(); });
+      button.addEventListener("click", async () => {
+        try {
+          await handler(button);
+          if (!keepOpen) menu.remove();
+        } catch (error) {
+          renderLookupResult(menu, { error: error.message });
+        }
+      });
       menu.append(button);
     };
     add("Copy value", () => navigator.clipboard.writeText(String(value)));
@@ -69,7 +92,28 @@ export class EventFieldActions {
       const url = parseSafeExternalUrl(value);
       if (url) add("Open safe link", () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));
     }
-    for (const provider of this.settings.externalProviders.filter((item) => item.enabled && fieldMatchesProvider(field, item.type))) {
+    if (ioc) {
+      const apiHeading = document.createElement("span");
+      apiHeading.className = "apepatrol-action-heading";
+      apiHeading.textContent = "Проверить через API";
+      menu.append(apiHeading);
+      for (const provider of API_PROVIDERS.filter((item) => item.types.includes(ioc.type))) {
+        add(provider.name, async (button) => {
+          button.disabled = true;
+          button.textContent = `${provider.name}: запрос…`;
+          const response = await browser.runtime.sendMessage({ type: "enrichment:ioc", provider: provider.id, ioc });
+          button.disabled = false;
+          button.textContent = provider.name;
+          if (!response?.ok) throw new Error(response?.error ?? "Провайдер не вернул результат");
+          renderLookupResult(menu, response.result);
+        }, { keepOpen: true });
+      }
+      const linkHeading = document.createElement("span");
+      linkHeading.className = "apepatrol-action-heading";
+      linkHeading.textContent = "Открыть отчёт на сайте";
+      menu.append(linkHeading);
+    }
+    for (const provider of this.settings.externalProviders.filter((item) => item.enabled && ioc?.type === item.type)) {
       if (provider.type === "ip") {
         const category = classifyIp(String(value));
         if (category === "invalid" || (category !== "public" && !provider.allowPrivate)) continue;
@@ -77,10 +121,13 @@ export class EventFieldActions {
       const url = fillUrlTemplate(provider.urlTemplate, { [provider.type]: value });
       if (url) add(provider.name, () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));
     }
+    if (ioc) add("Настройки IOC-провайдеров…", () => browser.runtime.openOptionsPage());
     const box = anchor.getBoundingClientRect();
-    menu.style.left = `${Math.min(box.left, innerWidth - 280)}px`;
-    menu.style.top = `${Math.min(box.bottom + 4, innerHeight - 260)}px`;
     document.body.append(menu);
+    const width = Math.min(menu.offsetWidth || 360, innerWidth - 12);
+    const height = Math.min(menu.offsetHeight || 420, innerHeight - 12);
+    menu.style.left = `${Math.max(6, Math.min(box.left, innerWidth - width - 6))}px`;
+    menu.style.top = `${Math.max(6, Math.min(box.bottom + 4, innerHeight - height - 6))}px`;
     const close = (event) => { if (!menu.contains(event.target) && event.target !== anchor) menu.remove(); };
     setTimeout(() => document.addEventListener("click", close, { once: true }), 0);
   }
@@ -92,8 +139,15 @@ export class EventFieldActions {
   }
 }
 
-function fieldMatchesProvider(field, type) {
-  if (type === "ip") return field.endsWith(".ip");
-  if (type === "hash") return field.endsWith("hash");
-  return type === "url" && field === "external_link";
+function renderLookupResult(menu, result) {
+  let output = menu.querySelector(".apepatrol-enrichment-result");
+  if (!output) {
+    output = document.createElement("pre");
+    output.className = "apepatrol-enrichment-result";
+    output.setAttribute("aria-live", "polite");
+    menu.append(output);
+  }
+  output.textContent = result.error
+    ? `Ошибка: ${result.error}`
+    : `${result.provider}: ${result.verdict}\n${result.summary}\n${JSON.stringify(result.details ?? {}, null, 2)}`;
 }

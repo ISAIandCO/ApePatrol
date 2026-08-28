@@ -1,7 +1,7 @@
 import { andPredicates, buildEqualityPredicate, buildInPredicate, orPredicates } from "../../shared/pdql/builder.js";
 import { toEpochSeconds } from "../../shared/time.js";
 
-const TIME_PRESETS = Object.freeze({ "5m": 300, "15m": 900, "1h": 3600, "24h": 86400 });
+const TIME_PRESETS = Object.freeze({ "5m": 300, "15m": 900, "1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000 });
 
 export function buildRelatedEventActions(event) {
   const actions = [];

@@ -16,16 +16,36 @@ function processIdentity(event) {
   const host = String(event["event_src.host"] ?? "unknown");
   const guid = first(event, ["object.process.guid", "subject.process.guid"]);
   if (guid) return { id: `${host}|guid:${guid}`, kind: "guid", value: String(guid) };
-  const pid = first(event, ["object.process.id", "object.id"]);
+  const pid = first(event, ["object.process.id", "object.id", "subject.process.id"]);
   if (pid !== undefined) return { id: `${host}|pid:${pid}|${asTime(event)}|${event.uuid ?? ""}`, kind: "pid", value: String(pid) };
   return { id: `${host}|event:${event.uuid ?? asTime(event)}`, kind: "event", value: String(event.uuid ?? "") };
 }
 
-function parentReference(event) {
-  const guid = event["object.process.parent.guid"];
-  if (guid) return { kind: "guid", value: String(guid) };
-  const pid = event["object.process.parent.id"];
-  return pid === undefined || pid === null || pid === "" ? null : { kind: "pid", value: String(pid) };
+function processReferences(event) {
+  const references = [];
+  const guid = first(event, ["object.process.guid", "subject.process.guid"]);
+  const pid = first(event, ["object.process.id", "object.id", "subject.process.id"]);
+  if (guid) references.push({ kind: "guid", value: String(guid) });
+  if (pid !== undefined) references.push({ kind: "pid", value: String(pid) });
+  return references;
+}
+
+function parentReferences(event) {
+  const references = [];
+  const guid = first(event, ["object.process.parent.guid", "subject.process.parent.guid"]);
+  const pid = first(event, ["object.process.parent.id", "subject.process.parent.id"]);
+  if (guid) references.push({ kind: "guid", value: String(guid) });
+  if (pid !== undefined) references.push({ kind: "pid", value: String(pid) });
+
+  // Some collectors expose the creator only as subject.process.* on a process
+  // creation event. Treat it as the parent when object.process.* is distinct.
+  const objectGuid = event["object.process.guid"];
+  const subjectGuid = event["subject.process.guid"];
+  const objectPid = event["object.process.id"] ?? event["object.id"];
+  const subjectPid = event["subject.process.id"];
+  if (!guid && subjectGuid && subjectGuid !== objectGuid) references.push({ kind: "guid", value: String(subjectGuid) });
+  if (pid === undefined && subjectPid !== undefined && String(subjectPid) !== String(objectPid ?? "")) references.push({ kind: "pid", value: String(subjectPid) });
+  return references;
 }
 
 function wouldCycle(nodes, childId, parentId) {
@@ -49,7 +69,8 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {
     nodes.set(identity.id, {
       id: identity.id,
       identity,
-      parentRef: parentReference(event),
+      references: processReferences(event),
+      parentRefs: parentReferences(event),
       parentId: null,
       children: [],
       event,
@@ -59,9 +80,9 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {
   }
   const list = [...nodes.values()];
   for (const node of list) {
-    if (!node.parentRef) continue;
+    if (!node.parentRefs.length) continue;
     const candidates = list.filter((candidate) => {
-      if (candidate.id === node.id || candidate.identity.kind !== node.parentRef.kind || candidate.identity.value !== node.parentRef.value) return false;
+      if (candidate.id === node.id || !node.parentRefs.some((parentRef) => candidate.references.some((reference) => reference.kind === parentRef.kind && reference.value === parentRef.value))) return false;
       return candidate.time <= node.time;
     });
     const parent = candidates.sort((a, b) => b.time - a.time)[0];
@@ -83,6 +104,23 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {
     roots: list.filter((node) => !node.parentId).map((node) => node.id),
     truncated: events.length > maxNodes,
   };
+}
+
+export function orderProcessTree(graph) {
+  if (!Array.isArray(graph?.nodes)) return [];
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const ordered = [];
+  const visited = new Set();
+  const visit = (node) => {
+    if (!node || visited.has(node.id)) return;
+    visited.add(node.id);
+    ordered.push(node);
+    const children = node.children.map((id) => nodes.get(id)).filter(Boolean).sort((a, b) => a.time - b.time);
+    children.forEach(visit);
+  };
+  graph.roots.map((id) => nodes.get(id)).filter(Boolean).sort((a, b) => a.time - b.time).forEach(visit);
+  graph.nodes.filter((node) => !visited.has(node.id)).sort((a, b) => a.time - b.time).forEach(visit);
+  return ordered;
 }
 
 export async function boundedMap(items, concurrency, mapper, signal) {

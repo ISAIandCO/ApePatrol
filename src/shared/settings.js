@@ -6,8 +6,23 @@ export const LOCAL_SECRETS_KEY = "apePatrolSecrets";
 export const LEGACY_SYNC_STORAGE_KEY = "siemMonkeySettings";
 export const LEGACY_LOCAL_SECRETS_KEY = "siemMonkeySecrets";
 
+export const BUILTIN_PROVIDERS = Object.freeze([
+  { id: "virustotal-ip", name: "VirusTotal — IP", type: "ip", urlTemplate: "https://www.virustotal.com/gui/ip-address/${ip}/details", enabled: true },
+  { id: "abuseipdb-ip", name: "AbuseIPDB — IP", type: "ip", urlTemplate: "https://www.abuseipdb.com/check/${ip}", enabled: true },
+  { id: "opentip-ip", name: "Kaspersky OpenTIP — IP", type: "ip", urlTemplate: "https://opentip.kaspersky.com/${ip}", enabled: true },
+  { id: "shodan-ip", name: "Shodan — IP", type: "ip", urlTemplate: "https://www.shodan.io/host/${ip}", enabled: true },
+  { id: "greynoise-ip", name: "GreyNoise — IP", type: "ip", urlTemplate: "https://viz.greynoise.io/ip/${ip}", enabled: true },
+  { id: "virustotal-hash", name: "VirusTotal — хеш", type: "hash", urlTemplate: "https://www.virustotal.com/gui/file/${hash}/detection", enabled: true },
+  { id: "opentip-hash", name: "Kaspersky OpenTIP — хеш", type: "hash", urlTemplate: "https://opentip.kaspersky.com/${hash}", enabled: true },
+  { id: "malwarebazaar-hash", name: "MalwareBazaar — хеш", type: "hash", urlTemplate: "https://bazaar.abuse.ch/sample/${hash}/", enabled: true },
+  { id: "virustotal-domain", name: "VirusTotal — домен", type: "domain", urlTemplate: "https://www.virustotal.com/gui/domain/${domain}/details", enabled: true },
+  { id: "opentip-domain", name: "Kaspersky OpenTIP — домен", type: "domain", urlTemplate: "https://opentip.kaspersky.com/${domain}", enabled: true },
+  { id: "opentip-url", name: "Kaspersky OpenTIP — URL", type: "url", urlTemplate: "https://opentip.kaspersky.com/${url}", enabled: true },
+  { id: "urlhaus-url", name: "URLhaus — URL", type: "url", urlTemplate: "https://urlhaus.abuse.ch/browse.php?search=${url}", enabled: true },
+]);
+
 export const DEFAULT_SETTINGS = Object.freeze({
-  schemaVersion: 3,
+  schemaVersion: 4,
   instances: [],
   features: {
     eventActions: true,
@@ -22,7 +37,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   iocListName: "IOCs_Value",
   process: { maxNodes: 1000, maxDepth: 64, maxConcurrentRequests: 4 },
   searchScope: { mode: "default", searchSources: [], localSources: [], groupIds: [] },
-  externalProviders: [],
+  externalProviders: BUILTIN_PROVIDERS,
   customFilters: BUILTIN_FILTERS,
   fieldAliases: {
     default: {
@@ -47,9 +62,9 @@ const boundedInteger = (value, fallback, min, max) => Number.isInteger(value) &&
 
 export function normalizeProvider(provider, index = 0) {
   if (!provider || typeof provider !== "object") return null;
-  const type = ["ip", "hash", "url"].includes(provider.type) ? provider.type : null;
+  const type = ["ip", "hash", "domain", "url"].includes(provider.type) ? provider.type : null;
   const templateUrl = typeof provider.urlTemplate === "string"
-    ? parseSafeExternalUrl(provider.urlTemplate.replace(/\$\{(?:ip|hash|url)\}/g, "placeholder"))
+    ? parseSafeExternalUrl(provider.urlTemplate.replace(/\$\{(?:ip|hash|domain|url)\}/g, "placeholder"))
     : null;
   if (!type || !templateUrl) return null;
   return {
@@ -76,16 +91,24 @@ export function normalizeSettings(input) {
     maxConcurrentRequests: boundedInteger(input.process?.maxConcurrentRequests, defaults.process.maxConcurrentRequests, 1, 16),
   };
   const aiMode = ["selected", "redacted", "full"].includes(input.ai?.mode) ? input.ai.mode : defaults.ai.mode;
-  const providers = Array.isArray(input.externalProviders)
-    ? input.externalProviders.map(normalizeProvider).filter(Boolean)
-    : [];
-  const customFilters = Array.isArray(input.customFilters)
-    ? input.customFilters.map(normalizeCustomFilter).filter(Boolean)
-    : structuredClone(BUILTIN_FILTERS);
+  const inputProviders = Array.isArray(input.externalProviders) ? input.externalProviders.map(normalizeProvider).filter(Boolean) : [];
+  const providerById = new Map(inputProviders.map((provider) => [provider.id, provider]));
+  const builtinProviderIds = new Set(BUILTIN_PROVIDERS.map((provider) => provider.id));
+  const providers = [
+    ...BUILTIN_PROVIDERS.map((provider) => normalizeProvider({ ...provider, enabled: providerById.get(provider.id)?.enabled ?? provider.enabled })),
+    ...inputProviders.filter((provider) => !builtinProviderIds.has(provider.id)),
+  ];
+  const inputFilters = Array.isArray(input.customFilters) ? input.customFilters.map(normalizeCustomFilter).filter(Boolean) : [];
+  const inputById = new Map(inputFilters.map((filter) => [filter.id, filter]));
+  const builtinIds = new Set(BUILTIN_FILTERS.map((filter) => filter.id));
+  const customFilters = [
+    ...BUILTIN_FILTERS.map((filter) => normalizeCustomFilter({ ...filter, enabled: inputById.get(filter.id)?.enabled ?? filter.enabled })),
+    ...inputFilters.filter((filter) => !builtinIds.has(filter.id)),
+  ];
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    schemaVersion: 3,
+    schemaVersion: 4,
     instances,
     features,
     iocListName: String(input.iocListName || defaults.iocListName).slice(0, 120),
@@ -161,6 +184,9 @@ export function migrateLegacySettings(legacy) {
 export function normalizeSecrets(input) {
   return {
     virusTotalApiKey: typeof input?.virusTotalApiKey === "string" ? input.virusTotalApiKey.trim() : "",
+    abuseIpDbApiKey: typeof input?.abuseIpDbApiKey === "string" ? input.abuseIpDbApiKey.trim() : "",
+    openTipApiKey: typeof input?.openTipApiKey === "string" ? input.openTipApiKey.trim() : "",
+    threatFoxApiKey: typeof input?.threatFoxApiKey === "string" ? input.threatFoxApiKey.trim() : "",
     llmApiKey: typeof input?.llmApiKey === "string" ? input.llmApiKey.trim() : "",
   };
 }

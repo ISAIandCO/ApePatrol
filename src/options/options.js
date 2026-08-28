@@ -1,7 +1,13 @@
 import { DEFAULT_SETTINGS, normalizeProvider } from "../shared/settings.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 
-const state = { settings: structuredClone(DEFAULT_SETTINGS), secretStatus: {} };
+const state = { settings: structuredClone(DEFAULT_SETTINGS), secretStatus: {}, permissionStatus: { dataCollection: [], endpointAccess: {} } };
+const IOC_API_ORIGINS = Object.freeze({
+  virustotal: "https://www.virustotal.com/*",
+  abuseipdb: "https://api.abuseipdb.com/*",
+  opentip: "https://opentip.kaspersky.com/*",
+  threatfox: "https://threatfox-api.abuse.ch/*",
+});
 const byId = (id) => document.getElementById(id);
 const featureIds = Object.keys(DEFAULT_SETTINGS.features);
 const lines = (value) => value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
@@ -56,7 +62,16 @@ function renderSettings() {
   byId("ai-deny").value = state.settings.ai.denyFields.join("\n");
   byId("debug-logging").checked = state.settings.debugLogging;
   byId("vt-status").textContent = state.secretStatus.virusTotal ? "An API key is stored locally. Enter a new value only to replace it." : "No API key stored.";
+  byId("abuseipdb-status").textContent = state.secretStatus.abuseIpDb ? "API-ключ сохранён локально." : "API-ключ не задан.";
+  byId("opentip-status").textContent = state.secretStatus.openTip ? "API-токен сохранён локально." : "API-токен не задан.";
+  byId("threatfox-status").textContent = state.secretStatus.threatFox ? "Auth-Key сохранён локально." : "Auth-Key не задан.";
   byId("ai-status").textContent = state.secretStatus.llm ? "An API key is stored locally. Enter a new value only to replace it." : "No API key stored.";
+  const dataGranted = ["websiteContent", "authenticationInfo"].every((type) => state.permissionStatus.dataCollection.includes(type));
+  byId("data-permission-status").textContent = dataGranted ? "Разрешение Firefox выдано." : "Разрешение Firefox не выдано.";
+  for (const provider of Object.keys(IOC_API_ORIGINS)) {
+    const button = byId(`grant-${provider}`);
+    button.textContent = state.permissionStatus.endpointAccess[provider] ? "Доступ к API выдан" : "Разрешить доступ к API";
+  }
 }
 
 async function addInstance() {
@@ -72,14 +87,32 @@ async function addInstance() {
   setStatus(`Access granted only to ${origin}.`);
 }
 
-async function requestExternalPermissions(origins) {
-  const unique = [...new Set(origins.filter(Boolean))];
-  if (unique.length && !await browser.permissions.request({ origins: unique })) return false;
-  try {
-    return await browser.permissions.request({ data_collection: ["websiteContent", "authenticationInfo"] });
-  } catch {
-    return false;
-  }
+async function refreshPermissionStatus() {
+  const response = await browser.runtime.sendMessage({ type: "enrichment:permission-status" });
+  if (!response?.ok) throw new Error(response?.error ?? "Не удалось прочитать разрешения Firefox");
+  state.permissionStatus = response;
+  renderSettings();
+}
+
+async function grantDataPermission() {
+  const granted = await browser.permissions.request({ data_collection: ["websiteContent", "authenticationInfo"] });
+  if (!granted) throw new Error("Firefox не выдал разрешение на передачу IOC и API-ключей");
+  await refreshPermissionStatus();
+  setStatus("Разрешение на передачу IOC внешним провайдерам выдано.");
+}
+
+async function grantProviderAccess(provider) {
+  const origin = IOC_API_ORIGINS[provider];
+  if (!origin || !await browser.permissions.request({ origins: [origin] })) throw new Error("Firefox не выдал доступ к API провайдера");
+  await refreshPermissionStatus();
+  setStatus("Доступ к API провайдера выдан.");
+}
+
+async function grantAiEndpoint() {
+  const endpoint = parseSafeExternalUrl(byId("ai-endpoint").value.trim());
+  if (!endpoint) throw new Error("Сначала укажите корректный HTTPS endpoint AI");
+  if (!await browser.permissions.request({ origins: [`${endpoint.origin}/*`] })) throw new Error("Firefox не выдал доступ к AI endpoint");
+  setStatus(`Доступ к ${endpoint.origin} выдан.`);
 }
 
 function collectSettings() {
@@ -114,21 +147,17 @@ function collectSettings() {
 async function save() {
   const settings = collectSettings();
   const vtKey = byId("vt-api-key").value.trim();
+  const abuseIpDbKey = byId("abuseipdb-api-key").value.trim();
+  const openTipKey = byId("opentip-api-key").value.trim();
+  const threatFoxKey = byId("threatfox-api-key").value.trim();
   const llmKey = byId("ai-api-key").value.trim();
-  const origins = [];
-  if (vtKey) origins.push("https://www.virustotal.com/*");
-  if (settings.features.aiAssistant) {
-    const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
-    if (!endpoint) throw new Error("AI assistant requires a safe HTTP(S) endpoint");
-    origins.push(`${endpoint.origin}/*`);
-  }
-  if ((vtKey || settings.features.aiAssistant) && !await requestExternalPermissions(origins)) {
-    throw new Error("Firefox data-transmission or endpoint permission was not granted; external provider was not enabled");
-  }
   const settingsResponse = await browser.runtime.sendMessage({ type: "settings:save", settings });
   if (!settingsResponse.ok) throw new Error(settingsResponse.error);
   const secrets = {};
   if (vtKey) secrets.virusTotalApiKey = vtKey;
+  if (abuseIpDbKey) secrets.abuseIpDbApiKey = abuseIpDbKey;
+  if (openTipKey) secrets.openTipApiKey = openTipKey;
+  if (threatFoxKey) secrets.threatFoxApiKey = threatFoxKey;
   if (llmKey) secrets.llmApiKey = llmKey;
   if (Object.keys(secrets).length) {
     const secretResponse = await browser.runtime.sendMessage({ type: "secrets:save", secrets });
@@ -136,18 +165,28 @@ async function save() {
   }
   state.settings = settingsResponse.settings;
   byId("vt-api-key").value = "";
+  byId("abuseipdb-api-key").value = "";
+  byId("opentip-api-key").value = "";
+  byId("threatfox-api-key").value = "";
   byId("ai-api-key").value = "";
+  state.secretStatus = { ...state.secretStatus, virusTotal: state.secretStatus.virusTotal || Boolean(vtKey), abuseIpDb: state.secretStatus.abuseIpDb || Boolean(abuseIpDbKey), openTip: state.secretStatus.openTip || Boolean(openTipKey), threatFox: state.secretStatus.threatFox || Boolean(threatFoxKey), llm: state.secretStatus.llm || Boolean(llmKey) };
+  renderSettings();
   setStatus("Settings saved. Dynamic SIEM registrations refreshed.");
 }
 
 byId("add-instance").addEventListener("click", () => addInstance().catch((error) => setStatus(error.message, true)));
 byId("save").addEventListener("click", () => save().catch((error) => setStatus(error.message, true)));
+byId("grant-data-permission").addEventListener("click", () => grantDataPermission().catch((error) => setStatus(error.message, true)));
+for (const provider of Object.keys(IOC_API_ORIGINS)) byId(`grant-${provider}`).addEventListener("click", () => grantProviderAccess(provider).catch((error) => setStatus(error.message, true)));
+byId("grant-ai-endpoint").addEventListener("click", () => grantAiEndpoint().catch((error) => setStatus(error.message, true)));
 
 Promise.all([
   browser.runtime.sendMessage({ type: "settings:get" }),
   browser.runtime.sendMessage({ type: "secrets:get-status" }),
-]).then(([settingsResponse, secretResponse]) => {
+  browser.runtime.sendMessage({ type: "enrichment:permission-status" }),
+]).then(([settingsResponse, secretResponse, permissionResponse]) => {
   state.settings = settingsResponse.settings;
   state.secretStatus = secretResponse.configured;
+  state.permissionStatus = permissionResponse;
   renderSettings();
 }).catch((error) => setStatus(error.message, true));

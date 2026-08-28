@@ -18,7 +18,8 @@ import { createSiemBackgroundFetch } from "./siem-transport.js";
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
   "object.process.id", "object.process.parent.id", "object.process.guid", "object.process.parent.guid",
-  "subject.process.guid", "object.process.name", "object.process.parent.name", "object.process.cmdline",
+  "subject.process.id", "subject.process.parent.id", "subject.process.guid", "subject.process.parent.guid",
+  "object.process.name", "object.process.parent.name", "object.process.cmdline", "subject.process.name", "subject.process.cmdline",
   "object.account.session_id", "correlation_name",
 ];
 

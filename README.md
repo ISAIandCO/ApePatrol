@@ -8,16 +8,17 @@ ApePatrol — расширение-компаньон для расследов�
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.0.5
+## Возможности ApePatrol 3.1.0
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
-- ограниченный process graph и timeline для Sysmon 1, Windows 4688 и Linux `execve`;
+- иерархическое дерево процессов с parent/child-связями и отдельный хронологический timeline для Sysmon 1, Windows 4688 и Linux `execve`;
 - Related events для host, account, IP, process GUID, hash и executable;
 - field actions только при отсутствии штатного action menu;
 - отображение связанного `incident_id` без угадывания mutating API;
 - Table Lists read/add/remove с preview и явным подтверждением;
-- безопасные HTTP(S) enrichment-ссылки, VirusTotal и OpenAI-compatible endpoint;
+- 48 встроенных русскоязычных PDQL-фильтров с описаниями и проверкой доступных полей;
+- IOC-проверки из иконки у конкретного поля: VirusTotal, AbuseIPDB, Kaspersky OpenTIP и ThreatFox API, а также безопасные ссылки на Shodan, GreyNoise, MalwareBazaar, URLhaus и другие отчёты;
 - опциональное описание IOC через узкий одноразовый MAIN-world bridge;
 - скрытие EDR UI без блокирования XHR/fetch.
 
@@ -29,7 +30,7 @@ ApePatrol — независимый open-source проект. Он не свя�
 
 ## Приватность и безопасность
 
-Секреты хранятся только в `storage.local`, никогда не выдаются content script/page world и не пишутся в DOM или журнал. MAIN world получает лишь одноразовые данные конкретной IOC-операции. Event values, LLM output и настройки считаются недоверенными и выводятся через `textContent`/DOM API. Внешняя передача отключена до отдельной настройки, выдачи permission и действия оператора.
+Секреты хранятся только в `storage.local`, никогда не выдаются content script/page world и не пишутся в DOM или журнал. MAIN world получает лишь одноразовые данные конкретной IOC-операции. Event values, enrichment/LLM output и настройки считаются недоверенными и выводятся через `textContent`/DOM API. Внешняя передача отключена до отдельной настройки, отдельного разрешения Firefox на передачу данных, разрешения для точного API endpoint и клика оператора по провайдеру.
 
 Подробнее: [INSTALL.md](INSTALL.md), [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [бренд](docs/BRANDING.md), [ручные тесты](docs/MANUAL_TESTS.md).
 

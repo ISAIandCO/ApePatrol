@@ -2,6 +2,7 @@ import { loadSecrets, loadSettings, saveSecrets, saveSettings } from "../shared/
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
 import { proxySiemApiRequest } from "./siem-proxy.js";
+import { IOC_API_PROVIDERS, lookupIoc } from "./ioc-enrichment.js";
 
 const CONTENT_PREFIX = "apepatrol-content-";
 const BRIDGE_PREFIX = "apepatrol-bridge-";
@@ -58,7 +59,8 @@ function assertExtensionPage(sender) {
 
 async function hasDataPermission(types) {
   try {
-    return await browser.permissions.contains({ data_collection: types });
+    const permissions = await browser.permissions.getAll();
+    return Array.isArray(permissions.data_collection) && types.every((type) => permissions.data_collection.includes(type));
   } catch {
     return false;
   }
@@ -77,28 +79,6 @@ function redactEvent(event, ai) {
   }));
   const serialized = JSON.stringify(output);
   return serialized.length <= ai.maxBytes ? output : { truncated: true, event: serialized.slice(0, ai.maxBytes) };
-}
-
-async function virusTotalLookup(hash) {
-  const secrets = await loadSecrets();
-  if (!secrets.virusTotalApiKey) throw new Error("VirusTotal API key is not configured");
-  if (!await browser.permissions.contains({ origins: ["https://www.virustotal.com/*"] })) throw new Error("VirusTotal host permission is missing");
-  if (!await hasDataPermission(["websiteContent", "authenticationInfo"])) throw new Error("Firefox data-collection permission is missing");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-  try {
-    const response = await fetch(`https://www.virustotal.com/api/v3/files/${encodeURIComponent(hash)}`, {
-      headers: { "x-apikey": secrets.virusTotalApiKey },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`VirusTotal returned HTTP ${response.status}`);
-    const body = await response.json();
-    const attributes = body?.data?.attributes;
-    if (!attributes?.last_analysis_stats) throw new Error("Unexpected VirusTotal response");
-    return { stats: attributes.last_analysis_stats, names: Array.isArray(attributes.names) ? attributes.names.slice(0, 50) : [] };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function llmRequest(message) {
@@ -151,7 +131,13 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
       case "secrets:get-status": {
         assertExtensionPage(sender);
         const secrets = await loadSecrets();
-        return { ok: true, configured: { virusTotal: Boolean(secrets.virusTotalApiKey), llm: Boolean(secrets.llmApiKey) } };
+        return { ok: true, configured: {
+          virusTotal: Boolean(secrets.virusTotalApiKey),
+          abuseIpDb: Boolean(secrets.abuseIpDbApiKey),
+          openTip: Boolean(secrets.openTipApiKey),
+          threatFox: Boolean(secrets.threatFoxApiKey),
+          llm: Boolean(secrets.llmApiKey),
+        } };
       }
       case "secrets:save":
         assertExtensionPage(sender);
@@ -166,9 +152,20 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         await browser.tabs.create({ url: url.href });
         return { ok: true };
       }
-      case "enrichment:virustotal":
+      case "enrichment:permission-status": {
         assertExtensionPage(sender);
-        return { ok: true, result: await virusTotalLookup(String(message.hash ?? "")) };
+        const all = await browser.permissions.getAll();
+        const endpointAccess = Object.fromEntries(await Promise.all(Object.entries(IOC_API_PROVIDERS).map(async ([id, provider]) => [id, await browser.permissions.contains({ origins: [provider.origin] })])));
+        return { ok: true, dataCollection: all.data_collection ?? [], endpointAccess };
+      }
+      case "enrichment:ioc": {
+        if (!isExtensionPageSender(sender, browser.runtime.getURL("/")) && !await senderIsConfiguredSiem(sender)) throw new Error("IOC enrichment is restricted to ApePatrol and configured SIEM pages");
+        const provider = IOC_API_PROVIDERS[message.provider];
+        if (!provider) throw new Error("Unknown IOC provider");
+        if (!await hasDataPermission(["websiteContent", "authenticationInfo"])) throw new Error("Разрешение Firefox на передачу IOC и API-ключа не выдано — откройте настройки ApePatrol");
+        if (!await browser.permissions.contains({ origins: [provider.origin] })) throw new Error(`Доступ к API ${provider.name} не выдан — откройте настройки ApePatrol`);
+        return { ok: true, result: await lookupIoc(message.provider, message.ioc, await loadSecrets()) };
+      }
       case "enrichment:llm":
         assertExtensionPage(sender);
         return { ok: true, result: await llmRequest(message) };

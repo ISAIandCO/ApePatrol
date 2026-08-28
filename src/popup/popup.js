@@ -1,9 +1,9 @@
-import { extractPreferredHash } from "../shared/hash.js";
 import { setSafeText } from "../shared/dom.js";
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
+import { orderProcessTree } from "../siem/process/graph.js";
 
 const state = { tab: null, context: null, settings: null, related: [], graph: null, processMode: "tree", processScale: 1, processLoading: null, collapsed: new Set(), lists: [], knowledgeBaseUrl: null };
 const byId = (id) => document.getElementById(id);
@@ -38,8 +38,6 @@ function renderEvent() {
   byId("incident-output").textContent = incidentId
     ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
     : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
-  const hash = extractPreferredHash(state.context?.event?.["object.hash"] ?? "");
-  byId("vt-lookup").disabled = !hash;
   const ai = state.settings.ai;
   byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. Fields currently visible: ${Object.keys(state.context?.event ?? {}).join(", ") || "none"}. Nothing is sent until you click below and confirm.`;
   byId("ai-run").disabled = !state.settings.features.aiAssistant || !ai.endpoint;
@@ -49,10 +47,13 @@ function renderEvent() {
 function renderCustomFilters() {
   const select = byId("custom-filter");
   select.replaceChildren();
-  for (const filter of state.settings.customFilters.filter((item) => item.enabled)) {
+  const filters = state.settings.customFilters.filter((item) => item.enabled).map((filter) => ({ filter, rendered: renderFilterTemplate(filter.template, state.context.event) }));
+  filters.sort((a, b) => Number(b.rendered.ok) - Number(a.rendered.ok) || a.filter.name.localeCompare(b.filter.name, "ru"));
+  for (const { filter, rendered } of filters) {
     const option = document.createElement("option");
     option.value = filter.id;
-    option.textContent = filter.name;
+    option.disabled = !rendered.ok;
+    option.textContent = `${filter.name}${rendered.ok ? "" : ` — нет полей: ${rendered.missing.join(", ")}`}`;
     select.append(option);
   }
   previewCustomFilter();
@@ -62,6 +63,7 @@ function selectedFilter() { return state.settings.customFilters.find((filter) =>
 function previewCustomFilter() {
   const filter = selectedFilter();
   const rendered = filter ? renderFilterTemplate(filter.template, state.context.event) : { ok: false, missing: [] };
+  byId("filter-description").textContent = filter?.description ?? "Для открытого события нет доступных встроенных фильтров.";
   byId("filter-preview").textContent = rendered.ok ? rendered.query : `Unavailable. Missing fields: ${rendered.missing.join(", ") || "none"}`;
   byId("open-filter").disabled = !rendered.ok;
 }
@@ -94,8 +96,17 @@ function renderProcess() {
   output.style.zoom = String(state.processScale);
   if (!state.graph) { output.textContent = "Build a bounded process graph for the current host."; return; }
   const search = byId("process-search").value.toLowerCase();
-  const nodes = [...state.graph.nodes].sort(state.processMode === "timeline" ? (a, b) => a.time - b.time : (a, b) => a.depth - b.depth || a.time - b.time);
+  const nodes = state.processMode === "timeline"
+    ? [...state.graph.nodes].sort((a, b) => a.time - b.time)
+    : orderProcessTree(state.graph);
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const relationCount = nodes.filter((node) => node.parentId).length;
+  const summary = document.createElement("p");
+  summary.className = "process-summary";
+  summary.textContent = state.processMode === "tree"
+    ? `Дерево: ${nodes.length} процессов, ${relationCount} parent/child-связей, ${state.graph.roots.length} корней.${relationCount ? "" : " В выбранных событиях не найдены поля родителя."}`
+    : `Таймлайн: ${nodes.length} процессов в хронологическом порядке; связи родителей не влияют на сортировку.`;
+  output.append(summary);
   const hiddenByCollapse = (node) => {
     let parentId = node.parentId;
     while (parentId) {
@@ -106,14 +117,22 @@ function renderProcess() {
   };
   for (const node of nodes) {
     const event = node.event;
-    const label = `${event.time ?? ""} · PID ${event["object.process.id"] ?? "?"} · ${event["object.process.cmdline"] ?? event["object.process.name"] ?? "unknown"}`;
+    const pid = event["object.process.id"] ?? event["subject.process.id"] ?? event["object.id"] ?? "?";
+    const process = event["object.process.cmdline"] ?? event["subject.process.cmdline"] ?? event["object.process.name"] ?? event["subject.process.name"] ?? "unknown";
+    const label = state.processMode === "timeline" ? `${event.time ?? ""} · PID ${pid} · ${process}` : `PID ${pid} · ${process} · ${event.time ?? ""}`;
     if (search && !label.toLowerCase().includes(search)) continue;
     if (!search && state.processMode === "tree" && hiddenByCollapse(node)) continue;
     const row = document.createElement("div");
-    row.className = `process-row${event.uuid === state.context.event.uuid ? " source" : ""}`;
-    if (state.processMode === "tree") row.style.paddingInlineStart = `${8 + Math.min(node.depth, 20) * 14}px`;
+    row.className = `process-row ${state.processMode}${event.uuid === state.context.event.uuid ? " source" : ""}`;
     const text = document.createElement("span");
-    text.textContent = label;
+    text.className = "process-label";
+    if (state.processMode === "tree") {
+      const prefix = document.createElement("span");
+      prefix.className = "process-tree-prefix";
+      prefix.textContent = `${"│  ".repeat(Math.max(0, Math.min(node.depth, 20) - 1))}${node.depth ? "└─ " : "● "}`;
+      text.append(prefix);
+    }
+    text.append(document.createTextNode(label));
     row.title = JSON.stringify(event, null, 2);
     const controls = document.createElement("span");
     if (state.processMode === "tree" && node.children.length) {
@@ -126,7 +145,7 @@ function renderProcess() {
     const copy = document.createElement("button");
     copy.textContent = "Copy";
     copy.title = "Copy PID, GUID and command line";
-    copy.addEventListener("click", () => navigator.clipboard.writeText(JSON.stringify({ pid: event["object.process.id"], guid: event["object.process.guid"], cmdline: event["object.process.cmdline"] }, null, 2)));
+    copy.addEventListener("click", () => navigator.clipboard.writeText(JSON.stringify({ pid, guid: event["object.process.guid"] ?? event["subject.process.guid"], cmdline: process }, null, 2)));
     const open = document.createElement("button");
     open.textContent = "Open";
     open.title = "Open the related process-start event";
@@ -240,14 +259,6 @@ byId("process-tree-mode").addEventListener("click", () => selectProcessMode("tre
 byId("process-timeline-mode").addEventListener("click", () => selectProcessMode("timeline").catch(() => {}));
 byId("process-zoom-out").addEventListener("click", () => { state.processScale = Math.max(.7, state.processScale - .1); renderProcess(); });
 byId("process-zoom-in").addEventListener("click", () => { state.processScale = Math.min(1.6, state.processScale + .1); renderProcess(); });
-byId("vt-lookup").addEventListener("click", async () => {
-  const hash = extractPreferredHash(state.context.event["object.hash"] ?? "");
-  try {
-    const response = await browser.runtime.sendMessage({ type: "enrichment:virustotal", hash });
-    if (!response.ok) throw new Error(response.error);
-    byId("enrichment-output").textContent = JSON.stringify(response.result, null, 2);
-  } catch (error) { showError(byId("enrichment-output"), error); }
-});
 byId("asset-lookup").addEventListener("click", async () => {
   byId("asset-output").textContent = "Loading from the current SIEM instance…";
   try { byId("asset-output").textContent = JSON.stringify((await sendToContent({ type: "siem:asset" })).asset, null, 2); }

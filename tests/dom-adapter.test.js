@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { SiemDomAdapter } from "../src/siem/dom/r27_3.js";
 import { EventFieldActions } from "../src/siem/features/event-actions.js";
 import { IocDescriptionFeature } from "../src/siem/features/ioc-description.js";
@@ -84,6 +84,30 @@ describe("MP SIEM DOM adapter fixtures", () => {
     expect(labels.map((label) => label.querySelectorAll(":scope > .apepatrol-field-action").length)).toEqual([1, 1, 1]);
     expect(document.querySelectorAll("article > .apepatrol-field-action")).toHaveLength(0);
     expect(adapter.getEventField("src.ip")).toBe("192.0.2.10");
+    feature.unmount();
+  });
+  it("runs IOC enrichment from the icon attached to the concrete field", async () => {
+    document.body.innerHTML = `
+      <article class="event-card">
+        <mc-dt> uuid </mc-dt><mc-dd>ioc-action</mc-dd>
+        <mc-dt> src.ip </mc-dt><mc-dd>8.8.8.8</mc-dd>
+      </article>`;
+    globalThis.browser = {
+      runtime: {
+        sendMessage: vi.fn().mockResolvedValue({ ok: true, result: { provider: "VirusTotal", verdict: "clean-or-unknown", summary: "0 detections", details: {} } }),
+        openOptionsPage: vi.fn(),
+      },
+    };
+    const adapter = new SiemDomAdapter();
+    const feature = new EventFieldActions({ features: { eventActions: true }, externalProviders: [] });
+    feature.onDomChanged({ event: adapter.extractEvent(), adapter });
+
+    document.querySelector("mc-dt:nth-of-type(2) .apepatrol-field-action").click();
+    const apiButton = [...document.querySelectorAll(".apepatrol-action-menu button")].find((button) => button.textContent === "VirusTotal API");
+    expect(apiButton).toBeTruthy();
+    apiButton.click();
+    await vi.waitFor(() => expect(document.querySelector(".apepatrol-enrichment-result")?.textContent).toContain("VirusTotal"));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: "enrichment:ioc", provider: "virustotal", ioc: { type: "ip", value: "8.8.8.8" } });
     feature.unmount();
   });
   it("detects native correlation description", async () => {

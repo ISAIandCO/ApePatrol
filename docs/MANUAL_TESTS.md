@@ -27,6 +27,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] Linux `execve`.
 - [ ] Empty result, parents, descendants, duplicate, cycle and PID reuse.
 - [ ] Search, source highlight, copy PID/GUID/cmdline and node limit.
+- [ ] Tree показывает parent/child-ветви и сворачивание потомков; Timeline показывает те же узлы строго по времени без иерархии.
 
 ## Related and incidents
 
@@ -40,6 +41,9 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] Cancel, missing list and changed request payload leave native add intact.
 - [ ] Read lists, preview add/remove and confirm exact row.
 - [ ] Observer/read-only role receives a clear 403 and no success state.
+- [ ] Иконка у каждого IOC-поля предлагает только подходящие типу API и ссылки; результат остаётся в меню этого поля.
+- [ ] VirusTotal, AbuseIPDB, OpenTIP и ThreatFox работают после трёх независимых шагов: сохранение ключа, data consent и endpoint permission.
+- [ ] Private/reserved IP не передаётся ни одному API.
 
 ## Assets/EDR
 

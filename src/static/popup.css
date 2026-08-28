@@ -20,6 +20,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflo
 .toolbar input { flex: 1 1 170px; padding: 5px; }
 .scroll { max-height: 330px; overflow: auto; border: 1px solid color-mix(in srgb, CanvasText 15%, transparent); border-radius: 5px; }
 .process-row { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: 8px; padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, CanvasText 9%, transparent); }
+.process-row.tree { font-family: ui-monospace, "Cascadia Mono", monospace; }
+.process-tree-prefix { white-space: pre; color: #2b79c2; font-weight: 700; }
+.process-row.timeline { position: relative; margin-inline-start: 12px; border-inline-start: 2px solid color-mix(in srgb, #2b79c2 55%, transparent); padding-inline-start: 15px; }
+.process-row.timeline::before { content: ""; position: absolute; inline-size: 8px; block-size: 8px; border-radius: 50%; background: #2b79c2; inset-inline-start: -5px; inset-block-start: 10px; }
+.process-summary { position: sticky; top: 0; z-index: 1; margin: 0 0 8px; padding: 7px 9px; border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent); background: Canvas; color: color-mix(in srgb, CanvasText 72%, transparent); }
 .process-row > span:last-child { display: flex; gap: 4px; align-items: start; }
 .process-row.source { background: color-mix(in srgb, #f7b500 18%, Canvas); } .process-row small { opacity: .72; }
 .related-group { margin: 10px 0; } .related-group h3 { margin: 5px 0; font-size: 13px; }.related-group button { margin: 3px 4px 3px 0; }

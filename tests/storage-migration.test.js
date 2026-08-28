@@ -28,8 +28,8 @@ describe("ApePatrol storage migration", () => {
     const migrated = await loadSettings();
 
     expect(migrated.instances).toEqual(["https://siem.example"]);
-    expect(migrated.customFilters[0].id).toBe("custom");
-    expect(migrated.externalProviders[0].id).toBe("hash");
+    expect(migrated.customFilters.find((filter) => filter.id === "custom")?.template).toBe("uuid = ${uuid}");
+    expect(migrated.externalProviders.find((provider) => provider.id === "hash")?.urlTemplate).toBe("https://example.test/${hash}");
     expect(browser.storage.sync.set).toHaveBeenCalledWith({ [SYNC_STORAGE_KEY]: migrated });
     expect(browser.storage.sync.remove).toHaveBeenCalledWith(LEGACY_SYNC_STORAGE_KEY);
   });
@@ -40,8 +40,9 @@ describe("ApePatrol storage migration", () => {
 
     const migrated = await loadSecrets();
 
-    expect(migrated).toEqual(legacy);
-    expect(browser.storage.local.set).toHaveBeenCalledWith({ [LOCAL_SECRETS_KEY]: legacy });
+    expect(migrated).toMatchObject(legacy);
+    expect(migrated.abuseIpDbApiKey).toBe("");
+    expect(browser.storage.local.set).toHaveBeenCalledWith({ [LOCAL_SECRETS_KEY]: migrated });
     expect(browser.storage.local.remove).toHaveBeenCalledWith(LEGACY_LOCAL_SECRETS_KEY);
     expect(browser.storage.sync.set).not.toHaveBeenCalled();
   });
