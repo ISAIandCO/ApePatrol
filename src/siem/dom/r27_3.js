@@ -1,15 +1,41 @@
-const FIELD_SELECTORS = ["[data-field-name]", "[data-field]", "[title]"];
+const FIELD_SELECTORS = ["[data-field-name]", "[data-field]", "mc-dt", "[title]"];
 const VALUE_SELECTORS = [".pt-preserve-white-space", "[data-field-value]", ".event-field-value", "pdql-fast-filter"];
+const EVENT_CARD_SELECTOR = "[data-testid='event-card'], pt-event-card, .event-card, .event-sidebar, [class*='event-card']";
+const EVENT_TIME_SELECTOR = [
+  ".layout-padding-no-left.mc-sidebar-header__title.flex",
+  ".layout-padding_no-left.mc-sidebar-header__title.flex",
+  "mc-sidebar-opened > header > .layout-row.flex > div > div",
+].join(", ");
+const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_.]*$/;
+
+function frameDocument(element) {
+  if (!/^(?:IFRAME|FRAME)$/.test(element?.tagName ?? "")) return null;
+  try {
+    return element.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function allRoots(root = document) {
   const roots = [root];
   const queue = [root];
   while (queue.length) {
     const current = queue.shift();
+    const currentDocument = frameDocument(current);
+    if (currentDocument && !roots.includes(currentDocument)) {
+      roots.push(currentDocument);
+      queue.push(currentDocument);
+    }
     for (const element of current.querySelectorAll?.("*") ?? []) {
       if (element.shadowRoot && !roots.includes(element.shadowRoot)) {
         roots.push(element.shadowRoot);
         queue.push(element.shadowRoot);
+      }
+      const childDocument = frameDocument(element);
+      if (childDocument && !roots.includes(childDocument)) {
+        roots.push(childDocument);
+        queue.push(childDocument);
       }
     }
   }
@@ -24,7 +50,38 @@ function queryDeep(selector, root = document) {
   return null;
 }
 
-export class R27_3Adapter {
+function queryAllDeep(selector, root = document) {
+  const matches = [];
+  for (const candidate of allRoots(root)) {
+    for (const match of candidate.querySelectorAll?.(selector) ?? []) {
+      if (!matches.includes(match)) matches.push(match);
+    }
+  }
+  return matches;
+}
+
+function labelName(label) {
+  return (label?.dataset?.fieldName
+    ?? label?.dataset?.field
+    ?? label?.getAttribute?.("title")
+    ?? label?.textContent
+    ?? "").trim();
+}
+
+function findFieldLabel(name, root) {
+  for (const selector of FIELD_SELECTORS) {
+    for (const label of queryAllDeep(selector, root)) {
+      if (labelName(label) === name) return label;
+    }
+  }
+  return null;
+}
+
+function connected(root) {
+  return Boolean(root?.isConnected || root?.host?.isConnected || root?.documentElement?.isConnected);
+}
+
+export class SiemDomAdapter {
   constructor() {
     this.cachedRoot = null;
     this.cachedCard = null;
@@ -32,21 +89,31 @@ export class R27_3Adapter {
   }
 
   detect() {
-    return Boolean(this.getRoot() && (this.getEventCard() || queryDeep("siem-core, ips-shell-remote-app")));
+    return Boolean(this.getRoot() && (this.getEventCard() || queryDeep("siem-core, ips-shell-remote-app, ips-root, pt-siem-main, mc-navbar-title")));
   }
 
   getRoot() {
     if (this.cachedRoot && (this.cachedRoot.isConnected || this.cachedRoot.host?.isConnected)) return this.cachedRoot;
+    const legacyFrame = queryDeep("#legacyApplicationFrame");
     this.cachedRoot = queryDeep("siem-core")?.shadowRoot
       ?? queryDeep("ips-shell-remote-app")?.shadowRoot
-      ?? queryDeep("main, [role='main'], #legacyApplicationFrame")
+      ?? queryDeep("main, [role='main']")
+      ?? frameDocument(legacyFrame)
       ?? document.body;
     return this.cachedRoot;
   }
 
   getEventCard() {
-    if (this.cachedCard?.isConnected) return this.cachedCard;
-    this.cachedCard = queryDeep("[data-testid='event-card'], pt-event-card, .event-card, .event-sidebar, [class*='event-card']", this.getRoot());
+    if (connected(this.cachedCard)) return this.cachedCard;
+    const root = this.getRoot();
+    this.cachedCard = queryDeep(EVENT_CARD_SELECTOR, root);
+    if (!this.cachedCard) {
+      const sidebars = queryAllDeep("mc-sidebar, mc-sidebar-opened", root);
+      this.cachedCard = sidebars.reverse().find((candidate) => findFieldLabel("uuid", candidate))
+        ?? sidebars.find((candidate) => queryDeep("mc-dt", candidate))
+        ?? null;
+    }
+    if (!this.cachedCard && findFieldLabel("uuid", root)) this.cachedCard = root;
     this.cachedCardRoots = this.cachedCard ? allRoots(this.cachedCard) : null;
     return this.cachedCard;
   }
@@ -68,15 +135,7 @@ export class R27_3Adapter {
     const roots = this.cachedCardRoots ?? allRoots(card);
     const direct = roots.map((root) => root.querySelector?.(`[data-field-name='${escaped}'], [data-field='${escaped}']`)).find(Boolean);
     if (direct) return direct;
-    for (const selector of FIELD_SELECTORS) {
-      for (const root of roots) {
-        for (const label of root.querySelectorAll?.(selector) ?? []) {
-          const labelName = label.dataset?.fieldName ?? label.dataset?.field ?? label.getAttribute("title") ?? label.textContent;
-          if (labelName?.trim() === name) return label;
-        }
-      }
-    }
-    return null;
+    return findFieldLabel(name, card);
   }
 
   readFieldContainer(label) {
@@ -93,11 +152,34 @@ export class R27_3Adapter {
     return label.dataset?.fieldValue ?? null;
   }
 
-  getEventTime() { return this.getEventField("time"); }
+  getEventTime() {
+    const fieldTime = this.getEventField("time");
+    if (fieldTime) return fieldTime;
+    const header = queryDeep(EVENT_TIME_SELECTOR, this.getEventCard() ?? this.getRoot());
+    return header?.textContent?.trim().replace(",", "") || null;
+  }
   getEventUuid() { return this.getEventField("uuid"); }
   getFilterEditor() { return queryDeep("textarea[data-testid*='filter'], pdql-editor textarea, [class*='filter-editor'] textarea", this.getRoot()); }
   getRuleCard() { return queryDeep("[data-testid*='correlation-rule'], [class*='correlation-rule']", this.getEventCard() ?? this.getRoot()); }
   getAssetFields() { return queryDeep("[data-testid*='asset'], [class*='asset']", this.getEventCard() ?? this.getRoot()); }
+
+  extractVisibleFields() {
+    const card = this.getEventCard();
+    if (!card) return {};
+    const event = {};
+    const seen = new Set();
+    for (const selector of FIELD_SELECTORS) {
+      for (const label of queryAllDeep(selector, card)) {
+        if (seen.has(label)) continue;
+        seen.add(label);
+        const name = labelName(label);
+        if (!FIELD_NAME_PATTERN.test(name) || event[name] !== undefined) continue;
+        const value = this.readFieldContainer(label);
+        if (value !== null && value !== "") event[name] = value;
+      }
+    }
+    return event;
+  }
 
   extractEvent() {
     const names = [
@@ -108,9 +190,10 @@ export class R27_3Adapter {
       "correlation_name", "incident_id", "asset.id", "event_src.asset.id", "src.asset.id", "dst.asset.id",
       "event_src.asset", "src.asset", "dst.asset",
     ];
-    const event = {};
+    const event = this.extractVisibleFields();
     for (const name of names) {
-      const value = this.getEventField(name);
+      if (event[name] !== undefined) continue;
+      const value = name === "time" ? this.getEventTime() : this.getEventField(name);
       if (value !== null && value !== "") event[name] = value;
     }
     return event;
@@ -128,4 +211,4 @@ export class R27_3Adapter {
   }
 }
 
-export { allRoots, queryDeep };
+export { allRoots, queryAllDeep, queryDeep, SiemDomAdapter as R27_3Adapter };

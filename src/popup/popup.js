@@ -29,7 +29,11 @@ function switchPanel(id) {
 function renderEvent() {
   byId("event-json").textContent = JSON.stringify(state.context?.event ?? {}, null, 2);
   const found = Object.keys(state.context?.event ?? {}).length;
-  setStatus(state.context?.detected ? `MP SIEM 27.3 adapter · ${found} fields` : "SIEM page detected, event card is closed");
+  setStatus(found
+    ? `MP SIEM adapter · ${found} fields`
+    : state.context?.detected
+      ? "MP SIEM detected · event card is closed or still loading"
+      : "Configured origin reached · MP SIEM UI not detected");
   const incidentId = state.context?.event?.incident_id;
   byId("incident-output").textContent = incidentId
     ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`

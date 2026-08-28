@@ -3,7 +3,7 @@
   "name": "ApePatrol",
   "description": "Firefox investigation companion for MaxPatrol SIEM",
   "version": "__VERSION__",
-  "version_name": "__VERSION__ (MP SIEM 27.3)",
+  "version_name": "__VERSION__ (target: MP SIEM 27.3)",
   "icons": {
     "16": "assets/icons/icon-16.png",
     "32": "assets/icons/icon-32.png",

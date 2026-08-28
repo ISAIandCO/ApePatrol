@@ -1,6 +1,6 @@
 # MaxPatrol SIEM 27.3 compatibility
 
-The adapter is intentionally R27.3-first. It uses feature detection and safe fallback selectors, not a single version selector. R24–R27.2 are no longer declared compatible; their code remains available in Git history.
+The adapter is intentionally R27.3-first, not R27.3-only. It uses capability detection, open shadow-root traversal, same-origin iframe traversal and safe fallback selectors rather than a version gate. Older R24–R27.2 interfaces are supported on a best-effort basis and remain in the regression matrix, while 27.3 is the primary release target.
 
 ## Endpoint inventory
 

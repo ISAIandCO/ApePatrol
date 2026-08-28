@@ -2,13 +2,13 @@
 
 **Firefox investigation companion for MaxPatrol SIEM**
 
-> ApePatrol is the successor to SiemMonkey. The project has been substantially redesigned around Firefox and MaxPatrol SIEM 27.3.
+> ApePatrol is the successor to SiemMonkey. The project has been substantially redesigned around Firefox, with MaxPatrol SIEM 27.3 as its primary target.
 
-ApePatrol — расширение-компаньон для расследований в **MaxPatrol SIEM 27.3**. Название продолжает исходную идею проекта: Monkey эволюционировал в Ape, а **APE** может читаться как *Analyst Productivity Extension*.
+ApePatrol — расширение-компаньон для расследований в **MaxPatrol SIEM**. Версия 27.3 является основной целью разработки и проверки; на других версиях адаптер пытается работать через capability/DOM detection и best-effort fallback без жёсткой блокировки по номеру версии. Название продолжает исходную идею проекта: Monkey эволюционировал в Ape, а **APE** может читаться как *Analyst Productivity Extension*.
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.0.2
+## Возможности ApePatrol 3.0.3
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;

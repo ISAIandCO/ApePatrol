@@ -4,7 +4,7 @@ import { aroundTime } from "../shared/time.js";
 import { SiemApiClient } from "../siem/api/client.js";
 import { detectCapabilities } from "../siem/api/capabilities.js";
 import { SiemDomController } from "../siem/dom/controller.js";
-import { R27_3Adapter } from "../siem/dom/r27_3.js";
+import { SiemDomAdapter } from "../siem/dom/r27_3.js";
 import { EdrUiFeature } from "../siem/features/edr-ui.js";
 import { getAssetContext } from "../siem/features/asset-enrichment.js";
 import { EventFieldActions } from "../siem/features/event-actions.js";
@@ -32,7 +32,7 @@ async function initialize() {
   await browser.runtime.sendMessage({ type: "content:ready" });
   window.postMessage({ source: "apepatrol", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
 
-  const adapter = new R27_3Adapter();
+  const adapter = new SiemDomAdapter();
   const client = new SiemApiClient(location.origin);
   const tableTools = new TableListTools(client);
   const features = [

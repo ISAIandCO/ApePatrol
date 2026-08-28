@@ -37,5 +37,5 @@ CI pins Actions by SHA, uses Node 22 and lockfile, runs audit/lint/tests/build/w
 - Incident mutations are intentionally absent until documented 27.3 semantics and roles are confirmed.
 - Process graph obtains one bounded ±24h host sample; deployments with very large activity may need a narrower scope or higher manual limit.
 - Sidebar is deferred; popup and feature logic are separated so a later sidebar can reuse them.
-- Legacy R24–R27.2 paths were removed from production and are available only through Git history.
+- R27.3 is the primary verified target. Older R24–R27.2 DOM layouts use best-effort legacy sidebar/iframe fallbacks and require live regression testing for each deployed build.
 - Upstream `web-ext` tooling currently brings a dev-only `image-size` DoS advisory with no patched release; it is absent from the XPI and production dependency audit is clean.

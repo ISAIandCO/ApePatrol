@@ -11,6 +11,8 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 
 ## Event page
 
+- [ ] R27.3 nested `ips-shell-remote-app` / `siem-core` shadow roots expose `mc-sidebar` fields.
+- [ ] R27.2/R27.1 or available legacy deployment exposes title/value fields through its sidebar or same-origin iframe fallback.
 - [ ] Open ordinary and correlation events; close/reopen the card.
 - [ ] Switch quickly between events and navigate through the SPA.
 - [ ] Confirm observer/API call counts remain bounded.
