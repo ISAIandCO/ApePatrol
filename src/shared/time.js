@@ -6,11 +6,13 @@ export function parseSiemTime(value) {
     return Number.isNaN(date.valueOf()) ? null : date;
   }
   if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return parseSiemTime(Number(trimmed));
   const native = new Date(value);
   if (!Number.isNaN(native.valueOf()) && /T|Z|[+-]\d\d:?\d\d/.test(value)) return native;
-  let match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  let match = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (match) return validLocalDate(+match[3], +match[2] - 1, +match[1], +match[4], +match[5], +(match[6] || 0));
-  match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)$/i);
+  match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)$/i);
   if (match) {
     let hour = +match[4] % 12;
     if (match[7].toUpperCase() === "PM") hour += 12;

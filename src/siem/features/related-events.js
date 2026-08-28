@@ -1,4 +1,5 @@
 import { andPredicates, buildEqualityPredicate, buildInPredicate, orPredicates } from "../../shared/pdql/builder.js";
+import { toEpochSeconds } from "../../shared/time.js";
 
 const TIME_PRESETS = Object.freeze({ "5m": 300, "15m": 900, "1h": 3600, "24h": 86400 });
 
@@ -24,8 +25,8 @@ export function buildRelatedEventActions(event) {
 }
 
 export function buildEventSearchUrl(origin, where, eventTime, preset = "15m") {
-  const center = Math.floor((new Date(eventTime).valueOf() || Date.now()) / 1000);
-  const range = TIME_PRESETS[preset] ?? TIME_PRESETS["15m"];
+  const center = (toEpochSeconds(eventTime) ?? Math.floor(Date.now() / 1000)) * 1000;
+  const range = (TIME_PRESETS[preset] ?? TIME_PRESETS["15m"]) * 1000;
   const search = new URLSearchParams({
     where,
     period: "range",

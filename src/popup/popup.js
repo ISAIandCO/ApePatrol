@@ -91,7 +91,7 @@ function renderRelated() {
 function renderProcess() {
   const output = byId("process-output");
   output.replaceChildren();
-  output.style.fontSize = `${state.processScale}em`;
+  output.style.zoom = String(state.processScale);
   if (!state.graph) { output.textContent = "Build a bounded process graph for the current host."; return; }
   const search = byId("process-search").value.toLowerCase();
   const nodes = [...state.graph.nodes].sort(state.processMode === "timeline" ? (a, b) => a.time - b.time : (a, b) => a.depth - b.depth || a.time - b.time);

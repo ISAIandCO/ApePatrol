@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessGraph } from "../src/siem/process/graph.js";
+import { buildProcessGraph, buildProcessSearchPredicate } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
 describe("process graph", () => {
+  it("uses numeric Windows message IDs and a separate Linux execve branch", () => {
+    expect(buildProcessSearchPredicate("host'o")).toBe("(event_src.host = 'host\\'o') and ((msgid in [1, 4688]) or (msgid = 'execve')) and (correlation_name = null)");
+  });
+  it("normalizes epoch-second strings for graph ordering", () => {
+    const graph = buildProcessGraph([event({ time: "1767225600", "object.process.guid": "A" })]);
+    expect(graph.nodes[0].time).toBe(1_767_225_600_000);
+  });
   it("handles an empty result", () => expect(buildProcessGraph([])).toEqual({ nodes: [], roots: [], truncated: false }));
   it("handles one node and a GUID parent tree", () => {
     expect(buildProcessGraph([event()]).nodes).toHaveLength(1);

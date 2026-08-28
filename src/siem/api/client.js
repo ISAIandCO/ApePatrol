@@ -10,17 +10,97 @@ export class SiemApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT = 15000;
+const READ_ONLY_POST_PATHS = [
+  "/api/events/v2/events",
+  "/api/events/v2/events/count_distinct_field_values",
+  "/api/assets_temporal_readmodel/v1/assets_grid",
+];
+
+function errorDetail(text, type = "") {
+  text = String(text ?? "").trim();
+  if (!text) return "";
+  if (type.includes("json")) {
+    try {
+      const body = JSON.parse(text);
+      const detail = body?.message ?? body?.error?.message ?? body?.error ?? body?.detail ?? body?.title;
+      if (typeof detail === "string") return detail.replace(/\s+/g, " ").slice(0, 240);
+    } catch { /* Fall through to safe plain text. */ }
+  }
+  return /[<>]/.test(text) ? "" : text.replace(/\s+/g, " ").slice(0, 240);
+}
+
+async function responseErrorDetail(response) {
+  let text;
+  try { text = (await response.text()).trim(); } catch { return ""; }
+  return errorDetail(text, response.headers.get("content-type") ?? "");
+}
+
+function canRetryWithXhr(method, path) {
+  if (method === "GET") return true;
+  if (method !== "POST") return false;
+  const pathname = new URL(path, "https://apepatrol.invalid").pathname;
+  return READ_ONLY_POST_PATHS.includes(pathname);
+}
 
 export class SiemApiClient {
-  constructor(origin, { timeout = DEFAULT_TIMEOUT, fetchImpl = fetch } = {}) {
+  constructor(origin, {
+    timeout = DEFAULT_TIMEOUT,
+    fetchImpl = fetch,
+    xhrFactory = typeof XMLHttpRequest === "function" ? () => new XMLHttpRequest() : null,
+  } = {}) {
     this.origin = new URL(origin).origin;
     this.timeout = timeout;
     this.fetchImpl = fetchImpl;
+    this.xhrFactory = xhrFactory;
     this.cache = new Map();
   }
 
   clearCache() {
     this.cache.clear();
+  }
+
+  requestWithXhr(path, { method, body, signal, timeout }) {
+    return new Promise((resolve, reject) => {
+      const xhr = this.xhrFactory();
+      const abort = () => xhr.abort();
+      const finish = (callback, value) => {
+        signal?.removeEventListener("abort", abort);
+        callback(value);
+      };
+      xhr.open(method, new URL(path, this.origin));
+      xhr.withCredentials = true;
+      xhr.timeout = timeout;
+      xhr.setRequestHeader("Accept", "application/json");
+      if (body !== undefined) xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const kind = xhr.status === 401 ? "unauthorized" : xhr.status === 403 ? "forbidden" : xhr.status === 404 ? "unsupported" : "http";
+          const detail = errorDetail(xhr.responseText, xhr.getResponseHeader("content-type") ?? "");
+          finish(reject, new SiemApiError(kind, `${method} ${path} failed with HTTP ${xhr.status}${detail ? `: ${detail}` : ""}`, { status: xhr.status, path }));
+          return;
+        }
+        if (xhr.status === 204) {
+          finish(resolve, null);
+          return;
+        }
+        const type = xhr.getResponseHeader("content-type") ?? "";
+        if (!type.includes("json")) {
+          finish(reject, new SiemApiError("invalid-response", `${path} did not return JSON`, { path }));
+          return;
+        }
+        try {
+          finish(resolve, JSON.parse(xhr.responseText));
+        } catch (cause) {
+          finish(reject, new SiemApiError("invalid-response", `${path} returned invalid JSON`, { path, cause }));
+        }
+      };
+      xhr.onerror = () => finish(reject, new SiemApiError("network", `${method} ${path} failed using both Fetch and XHR`, { path }));
+      xhr.ontimeout = () => finish(reject, new SiemApiError("timeout", `${method} ${path} timed out`, { path }));
+      xhr.onabort = () => finish(reject, new SiemApiError("cancelled", `${method} ${path} was cancelled`, { path }));
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      else xhr.send(body === undefined ? null : JSON.stringify(body));
+    });
   }
 
   async request(path, { method = "GET", body, signal, timeout = this.timeout } = {}) {
@@ -32,13 +112,14 @@ export class SiemApiClient {
       const response = await this.fetchImpl(new URL(path, this.origin), {
         method,
         credentials: "include",
-        headers: body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
+        headers: body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json; charset=utf-8" },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
       if (!response.ok) {
         const kind = response.status === 401 ? "unauthorized" : response.status === 403 ? "forbidden" : response.status === 404 ? "unsupported" : "http";
-        throw new SiemApiError(kind, `${method} ${path} failed with HTTP ${response.status}`, { status: response.status, path });
+        const detail = await responseErrorDetail(response);
+        throw new SiemApiError(kind, `${method} ${path} failed with HTTP ${response.status}${detail ? `: ${detail}` : ""}`, { status: response.status, path });
       }
       if (response.status === 204) return null;
       const type = response.headers.get("content-type") ?? "";
@@ -54,7 +135,15 @@ export class SiemApiClient {
         const kind = signal?.aborted ? "cancelled" : "timeout";
         throw new SiemApiError(kind, `${method} ${path} ${kind === "timeout" ? "timed out" : "was cancelled"}`, { path, cause: error });
       }
-      throw new SiemApiError("network", `${method} ${path} failed`, { path, cause: error });
+      // Some MP SIEM builds accept authenticated XMLHttpRequest but terminate Fetch.
+      // Retry only reads: automatically replaying writes could duplicate mutations.
+      if (this.xhrFactory && canRetryWithXhr(method, path)) {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        return this.requestWithXhr(path, { method, body, signal, timeout });
+      }
+      const detail = typeof error?.message === "string" ? `: ${error.message}` : "";
+      throw new SiemApiError("network", `${method} ${path} failed${detail}`, { path, cause: error });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);

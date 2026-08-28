@@ -14,5 +14,13 @@ describe("safe URLs", () => {
     const url = buildEventSearchUrl("https://siem.example", "uuid = 'a'", "2026-01-01T00:00:00Z", "5m");
     expect(url).toMatch(/^https:\/\/siem\.example\/#\/events\/view\?where=/);
     expect(url).not.toContain(".example/?where");
+    const parameters = new URLSearchParams(new URL(url).hash.split("?")[1]);
+    expect(parameters.get("start")).toBe(String(Date.parse("2026-01-01T00:00:00Z") - 300_000));
+    expect(parameters.get("end")).toBe(String(Date.parse("2026-01-01T00:00:00Z") + 300_000));
+  });
+  it("treats a numeric SIEM time string as epoch seconds, not milliseconds", () => {
+    const url = buildEventSearchUrl("https://siem.example", "uuid = 'a'", "1767225600", "5m");
+    const parameters = new URLSearchParams(new URL(url).hash.split("?")[1]);
+    expect(parameters.get("start")).toBe(String(1_767_225_600_000 - 300_000));
   });
 });

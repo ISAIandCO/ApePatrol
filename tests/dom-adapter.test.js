@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { SiemDomAdapter } from "../src/siem/dom/r27_3.js";
+import { EventFieldActions } from "../src/siem/features/event-actions.js";
 import { IocDescriptionFeature } from "../src/siem/features/ioc-description.js";
 
 beforeAll(() => { globalThis.CSS ??= {}; CSS.escape ??= (value) => String(value).replace(/["'\\]/g, "\\$&"); });
@@ -67,6 +68,23 @@ describe("MP SIEM DOM adapter fixtures", () => {
     expect(adapter.detect()).toBe(true);
     expect(adapter.getEventUuid()).toBe("legacy-event");
     expect(adapter.getEventField("src.ip")).toBe("192.0.2.45");
+  });
+  it("attaches a separate action to each concrete field label", () => {
+    document.body.innerHTML = `
+      <article class="event-card">
+        <mc-dt> uuid </mc-dt><mc-dd>event-actions</mc-dd>
+        <mc-dt> src.ip </mc-dt><mc-dd>192.0.2.10</mc-dd>
+        <mc-dt> dst.ip </mc-dt><mc-dd>198.51.100.20</mc-dd>
+      </article>`;
+    const adapter = new SiemDomAdapter();
+    const feature = new EventFieldActions({ features: { eventActions: true }, externalProviders: [] });
+    feature.onDomChanged({ event: adapter.extractEvent(), adapter });
+
+    const labels = [...document.querySelectorAll("mc-dt")];
+    expect(labels.map((label) => label.querySelectorAll(":scope > .apepatrol-field-action").length)).toEqual([1, 1, 1]);
+    expect(document.querySelectorAll("article > .apepatrol-field-action")).toHaveLength(0);
+    expect(adapter.getEventField("src.ip")).toBe("192.0.2.10");
+    feature.unmount();
   });
   it("detects native correlation description", async () => {
     document.body.innerHTML = await fixture("correlation-event");

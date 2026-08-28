@@ -61,11 +61,11 @@ function queryAllDeep(selector, root = document) {
 }
 
 function labelName(label) {
-  return (label?.dataset?.fieldName
-    ?? label?.dataset?.field
-    ?? label?.getAttribute?.("title")
-    ?? label?.textContent
-    ?? "").trim();
+  const explicit = label?.dataset?.fieldName ?? label?.dataset?.field ?? label?.getAttribute?.("title");
+  if (explicit) return explicit.trim();
+  const cleanLabel = label?.cloneNode?.(true);
+  cleanLabel?.querySelectorAll?.("[data-apepatrol-ui]").forEach((element) => element.remove());
+  return (cleanLabel?.textContent ?? label?.textContent ?? "").trim();
 }
 
 function findFieldLabel(name, root) {

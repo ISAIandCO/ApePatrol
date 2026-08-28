@@ -1,5 +1,4 @@
 import { createLogger } from "../shared/logger.js";
-import { andPredicates, buildEqualityPredicate, buildInPredicate } from "../shared/pdql/builder.js";
 import { aroundTime } from "../shared/time.js";
 import { SiemApiClient } from "../siem/api/client.js";
 import { detectCapabilities } from "../siem/api/capabilities.js";
@@ -13,7 +12,7 @@ import { IocDescriptionFeature } from "../siem/features/ioc-description.js";
 import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
-import { buildProcessGraph } from "../siem/process/graph.js";
+import { buildProcessGraph, buildProcessSearchPredicate } from "../siem/process/graph.js";
 
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
@@ -103,10 +102,7 @@ async function buildProcessContext(client, event, settings) {
   if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
   currentProcessController?.abort();
   currentProcessController = new AbortController();
-  const where = andPredicates(
-    buildEqualityPredicate("event_src.host", host),
-    buildInPredicate("msgid", ["1", "4688", "execve"]),
-  );
+  const where = buildProcessSearchPredicate(host);
   const range = aroundTime(event.time, 86400);
   const scope = settings.searchScope.mode === "selected" ? {
     searchType: "selected",

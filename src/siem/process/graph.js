@@ -1,5 +1,16 @@
+import { andPredicates, buildEqualityPredicate, orPredicates } from "../../shared/pdql/builder.js";
+import { parseSiemTime } from "../../shared/time.js";
+
 const first = (event, names) => names.map((name) => event[name]).find((value) => value !== undefined && value !== null && value !== "");
-const asTime = (event) => new Date(event.time ?? 0).valueOf() || 0;
+const asTime = (event) => parseSiemTime(event.time)?.valueOf() ?? 0;
+
+export function buildProcessSearchPredicate(host) {
+  return andPredicates(
+    buildEqualityPredicate("event_src.host", host),
+    orPredicates("msgid in [1, 4688]", "msgid = 'execve'"),
+    "correlation_name = null",
+  );
+}
 
 function processIdentity(event) {
   const host = String(event["event_src.host"] ?? "unknown");

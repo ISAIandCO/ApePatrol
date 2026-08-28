@@ -22,18 +22,27 @@ export class EventFieldActions {
     for (const field of ACTION_FIELDS) {
       const value = event[field];
       const label = value && adapter.getEventFieldElement(field);
-      if (!label || label.parentElement?.querySelector(":scope > .apepatrol-field-action")) continue;
+      if (!label || label.querySelector(":scope > .apepatrol-field-action")) continue;
       if (adapter.isNativeFeaturePresent("eventActions", label.parentElement) || adapter.isNativeFeaturePresent("copyPdql", label.parentElement)) continue;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "apepatrol-field-action";
+      button.dataset.apepatrolUi = "action";
       button.textContent = "🐵";
       button.title = `ApePatrol actions: ${field}`;
+      Object.assign(button.style, {
+        marginInlineStart: "4px",
+        padding: "1px 4px",
+        border: "0",
+        background: "transparent",
+        cursor: "pointer",
+        verticalAlign: "middle",
+      });
       button.addEventListener("click", (clickEvent) => {
         clickEvent.stopPropagation();
         this.openMenu(button, field, value, event);
       });
-      label.parentElement?.append(button);
+      label.append(button);
       this.elements.add(button);
     }
   }
@@ -53,7 +62,7 @@ export class EventFieldActions {
     add("Copy value", () => navigator.clipboard.writeText(String(value)));
     const predicate = buildEqualityPredicate(field, value);
     add("Copy PDQL predicate", () => navigator.clipboard.writeText(predicate));
-    for (const [label, preset] of [["Search same value", "15m"], ["Search ±1h", "1h"], ["Search ±24h", "24h"]]) {
+    for (const [label, preset] of [["Open matching events in SIEM (±15m)", "15m"], ["Open matching events in SIEM (±1h)", "1h"], ["Open matching events in SIEM (±24h)", "24h"]]) {
       add(label, () => browser.runtime.sendMessage({ type: "tabs:open", url: buildEventSearchUrl(location.origin, predicate, event.time, preset) }));
     }
     if (field === "external_link") {
