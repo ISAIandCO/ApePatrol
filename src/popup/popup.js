@@ -255,17 +255,19 @@ byId("table-add").addEventListener("click", () => applyTableOperation("add").cat
 byId("table-remove").addEventListener("click", () => applyTableOperation("remove").catch((error) => showError(byId("tools-output"), error)));
 byId("ai-preview-button").addEventListener("click", async () => {
   byId("ai-preview-meta").textContent = "Формирую payload локально…";
-  const response = await browser.runtime.sendMessage({ type: "ai:preview", event: state.context.event, selectedFields: selectedAiFields() });
-  if (!response?.ok) {
-    showError(byId("ai-preview"), response?.error ?? "Не удалось сформировать AI payload");
+  try {
+    const response = await browser.runtime.sendMessage({ type: "ai:preview", event: state.context.event, selectedFields: selectedAiFields() });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось сформировать AI payload");
+    state.aiPreviewHash = response.preview.hash;
+    byId("ai-preview").textContent = response.preview.serialized;
+    const warnings = response.preview.warnings.length ? `\nПредупреждения:\n- ${response.preview.warnings.join("\n- ")}` : "\nЭвристических предупреждений нет; это не означает, что payload безопасен.";
+    byId("ai-preview-meta").textContent = `${response.preview.byteLength} UTF-8 bytes · ${response.preview.sentFields.length} fields · destination ${response.endpoint}${warnings}`;
+    byId("ai-run").disabled = false;
+  } catch (error) {
+    invalidateAiPreview();
+    showError(byId("ai-preview"), error);
     byId("ai-preview-meta").textContent = "";
-    return;
   }
-  state.aiPreviewHash = response.preview.hash;
-  byId("ai-preview").textContent = response.preview.serialized;
-  const warnings = response.preview.warnings.length ? `\nПредупреждения:\n- ${response.preview.warnings.join("\n- ")}` : "\nЭвристических предупреждений нет; это не означает, что payload безопасен.";
-  byId("ai-preview-meta").textContent = `${response.preview.byteLength} UTF-8 bytes · ${response.preview.sentFields.length} fields · destination ${response.endpoint}${warnings}`;
-  byId("ai-run").disabled = false;
 });
 byId("ai-run").addEventListener("click", async () => {
   const ai = state.settings.ai;
@@ -273,14 +275,19 @@ byId("ai-run").addEventListener("click", async () => {
   const warning = ai.mode === "full" ? "Full mode отправит все нормализованные поля. " : "";
   if (!confirm(`${warning}Отправить в ${ai.endpoint} ровно показанный выше payload?`)) return;
   byId("ai-output").textContent = "Waiting for the configured endpoint…";
-  const response = await browser.runtime.sendMessage({
-    type: "enrichment:llm",
-    event: state.context.event,
-    selectedFields: selectedAiFields(),
-    previewHash: state.aiPreviewHash,
-    confirmed: true,
-  });
-  setSafeText(byId("ai-output"), response.ok ? response.result.content : response.error);
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "enrichment:llm",
+      event: state.context.event,
+      selectedFields: selectedAiFields(),
+      previewHash: state.aiPreviewHash,
+      confirmed: true,
+    });
+    if (!response?.ok) throw new Error(response?.error ?? "AI endpoint request failed");
+    setSafeText(byId("ai-output"), response.result.content);
+  } catch (error) {
+    showError(byId("ai-output"), error);
+  }
 });
 
 browser.storage.onChanged.addListener((changes, area) => {
