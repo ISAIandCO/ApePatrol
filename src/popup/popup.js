@@ -4,8 +4,9 @@ import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
 import { loadOptionalPopupFeatures } from "./feature-loader.js";
+import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 
-const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null };
+const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null, aiPreviewHash: null };
 const byId = (id) => document.getElementById(id);
 const setStatus = (message) => { byId("status").textContent = message; };
 const showError = (target, error) => { setSafeText(target, error?.message ?? String(error)); };
@@ -14,7 +15,11 @@ async function sendToContent(message) {
   if (!state.tab?.id) throw new Error("No active tab");
   try {
     const response = await browser.tabs.sendMessage(state.tab.id, message);
-    if (!response?.ok) throw new Error(response?.error ?? "Feature unavailable on this page");
+    if (!response?.ok) {
+      const responseError = new Error(response?.error ?? "Feature unavailable on this page");
+      responseError.code = response?.errorCode;
+      throw responseError;
+    }
     return response;
   } catch (error) {
     throw new Error(error.message.includes("Receiving end") ? "Open a configured MaxPatrol SIEM event page" : error.message);
@@ -43,6 +48,37 @@ function applyFeatureVisibility() {
   byId("table-list-tools").hidden = !features.tableListTools;
 }
 
+function selectedAiFields() {
+  return [...document.querySelectorAll("#ai-fields input:checked")].map((input) => input.value);
+}
+
+function invalidateAiPreview() {
+  state.aiPreviewHash = null;
+  byId("ai-run").disabled = true;
+  byId("ai-preview").textContent = "";
+  byId("ai-preview-meta").textContent = "";
+}
+
+function renderAiFieldPicker() {
+  const picker = byId("ai-field-picker");
+  const fields = byId("ai-fields");
+  fields.replaceChildren();
+  const selectedMode = state.settings.ai.mode === "selected";
+  picker.hidden = !selectedMode;
+  if (!selectedMode) return;
+  const defaults = new Set(state.settings.ai.selectedFields);
+  for (const field of Object.keys(state.context?.event ?? {}).sort()) {
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = field;
+    checkbox.checked = defaults.has(field);
+    checkbox.addEventListener("change", invalidateAiPreview);
+    label.append(checkbox, document.createTextNode(` ${field}`));
+    fields.append(label);
+  }
+}
+
 function renderEvent() {
   byId("event-json").textContent = JSON.stringify(state.context?.event ?? {}, null, 2);
   const found = Object.keys(state.context?.event ?? {}).length;
@@ -58,8 +94,10 @@ function renderEvent() {
       : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
   }
   const ai = state.settings.ai;
-  byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. Fields currently visible: ${Object.keys(state.context?.event ?? {}).join(", ") || "none"}. Nothing is sent until you click below and confirm.`;
-  byId("ai-run").disabled = !state.settings.features.aiAssistant || !ai.endpoint;
+  byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. ApePatrol will show the exact final request body before transmission; warnings are not a DLP guarantee.`;
+  byId("ai-preview-button").disabled = !state.settings.features.aiAssistant || !ai.endpoint || !ai.model;
+  invalidateAiPreview();
+  renderAiFieldPicker();
   renderCustomFilters();
 }
 
@@ -111,8 +149,20 @@ function renderRelated() {
 
 async function openProcessGraph(layout) {
   if (!state.tab?.id) throw new Error("No active SIEM tab");
-  const search = new URLSearchParams({ tabId: String(state.tab.id), layout });
+  byId("process-output").textContent = "Получаю процессы и создаю автономный снимок…";
+  const response = await sendToContent({ type: "siem:process" });
+  const saved = await browser.runtime.sendMessage({
+    type: "graph:snapshot:save",
+    snapshot: {
+      sourceTabId: state.tab.id,
+      sourceEvent: state.context.event,
+      response,
+    },
+  });
+  if (!saved?.ok) throw new Error(saved?.error ?? "Не удалось сохранить снимок графа");
+  const search = new URLSearchParams({ tabId: String(state.tab.id), snapshotId: saved.snapshot.id, layout });
   await browser.tabs.create({ url: browser.runtime.getURL(`process-graph.html?${search}`) });
+  byId("process-output").textContent = "Граф открыт в автономной вкладке. Снимок останется доступен после закрытия исходной вкладки SIEM.";
 }
 
 async function downloadEvent() {
@@ -203,12 +253,41 @@ byId("open-filter").addEventListener("click", () => {
 });
 byId("table-add").addEventListener("click", () => applyTableOperation("add").catch((error) => showError(byId("tools-output"), error)));
 byId("table-remove").addEventListener("click", () => applyTableOperation("remove").catch((error) => showError(byId("tools-output"), error)));
+byId("ai-preview-button").addEventListener("click", async () => {
+  byId("ai-preview-meta").textContent = "Формирую payload локально…";
+  const response = await browser.runtime.sendMessage({ type: "ai:preview", event: state.context.event, selectedFields: selectedAiFields() });
+  if (!response?.ok) {
+    showError(byId("ai-preview"), response?.error ?? "Не удалось сформировать AI payload");
+    byId("ai-preview-meta").textContent = "";
+    return;
+  }
+  state.aiPreviewHash = response.preview.hash;
+  byId("ai-preview").textContent = response.preview.serialized;
+  const warnings = response.preview.warnings.length ? `\nПредупреждения:\n- ${response.preview.warnings.join("\n- ")}` : "\nЭвристических предупреждений нет; это не означает, что payload безопасен.";
+  byId("ai-preview-meta").textContent = `${response.preview.byteLength} UTF-8 bytes · ${response.preview.sentFields.length} fields · destination ${response.endpoint}${warnings}`;
+  byId("ai-run").disabled = false;
+});
 byId("ai-run").addEventListener("click", async () => {
   const ai = state.settings.ai;
-  if (!confirm(`Send the ${ai.mode} event to ${ai.endpoint}?`)) return;
+  if (!state.aiPreviewHash) return;
+  const warning = ai.mode === "full" ? "Full mode отправит все нормализованные поля. " : "";
+  if (!confirm(`${warning}Отправить в ${ai.endpoint} ровно показанный выше payload?`)) return;
   byId("ai-output").textContent = "Waiting for the configured endpoint…";
-  const response = await browser.runtime.sendMessage({ type: "enrichment:llm", event: state.context.event, confirmed: true });
+  const response = await browser.runtime.sendMessage({
+    type: "enrichment:llm",
+    event: state.context.event,
+    selectedFields: selectedAiFields(),
+    previewHash: state.aiPreviewHash,
+    confirmed: true,
+  });
   setSafeText(byId("ai-output"), response.ok ? response.result.content : response.error);
+});
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes[SYNC_STORAGE_KEY] || !state.settings || !state.context) return;
+  state.settings = normalizeSettings(changes[SYNC_STORAGE_KEY].newValue);
+  applyFeatureVisibility();
+  renderEvent();
 });
 
 initialize().catch((error) => {

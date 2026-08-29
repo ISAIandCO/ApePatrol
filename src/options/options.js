@@ -46,7 +46,6 @@ function renderSettings() {
   byId("ioc-list-name").value = state.settings.iocListName;
   byId("max-nodes").value = state.settings.process.maxNodes;
   byId("max-depth").value = state.settings.process.maxDepth;
-  byId("max-concurrency").value = state.settings.process.maxConcurrentRequests;
   byId("search-mode").value = state.settings.searchScope.mode;
   byId("search-sources").value = state.settings.searchScope.searchSources.join("\n");
   byId("local-sources").value = state.settings.searchScope.localSources.join("\n");
@@ -58,6 +57,7 @@ function renderSettings() {
   byId("ai-model").value = state.settings.ai.model;
   byId("ai-mode").value = state.settings.ai.mode;
   byId("ai-max-bytes").value = state.settings.ai.maxBytes;
+  byId("ai-selected").value = state.settings.ai.selectedFields.join("\n");
   byId("ai-allow").value = state.settings.ai.allowFields.join("\n");
   byId("ai-deny").value = state.settings.ai.denyFields.join("\n");
   byId("debug-logging").checked = state.settings.debugLogging;
@@ -119,7 +119,7 @@ function collectSettings() {
   const settings = structuredClone(state.settings);
   settings.features = Object.fromEntries(featureIds.map((name) => [name, byId(`feature-${name}`).checked]));
   settings.iocListName = byId("ioc-list-name").value.trim();
-  settings.process = { maxNodes: Number(byId("max-nodes").value), maxDepth: Number(byId("max-depth").value), maxConcurrentRequests: Number(byId("max-concurrency").value) };
+  settings.process = { maxNodes: Number(byId("max-nodes").value), maxDepth: Number(byId("max-depth").value) };
   settings.searchScope = {
     mode: byId("search-mode").value,
     searchSources: lines(byId("search-sources").value),
@@ -138,7 +138,8 @@ function collectSettings() {
   try { settings.fieldAliases = JSON.parse(byId("field-aliases").value || "{}"); } catch { throw new Error("Field aliases JSON is invalid"); }
   settings.ai = {
     endpoint: byId("ai-endpoint").value.trim(), model: byId("ai-model").value.trim(), mode: byId("ai-mode").value,
-    maxBytes: Number(byId("ai-max-bytes").value), allowFields: lines(byId("ai-allow").value), denyFields: lines(byId("ai-deny").value),
+    maxBytes: Number(byId("ai-max-bytes").value), selectedFields: lines(byId("ai-selected").value),
+    allowFields: lines(byId("ai-allow").value), denyFields: lines(byId("ai-deny").value),
   };
   settings.debugLogging = byId("debug-logging").checked;
   return settings;
