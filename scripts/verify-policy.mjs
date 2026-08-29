@@ -21,6 +21,9 @@ async function scan(directory) {
       for (const forbidden of ["globalMonkeyOptions", "jquery-ui-1.12.1", "__zone_symbol__xhrURL"]) {
         if (text.includes(forbidden)) failures.push(`${path.relative(root.pathname, file)} contains ${forbidden}`);
       }
+      for (const forbidden of [/world\s*:\s*["']MAIN["']/, /window\.postMessage\s*\(/, /window\.fetch\s*=/, /XMLHttpRequest\.prototype\.(?:open|send)\s*=/]) {
+        if (forbidden.test(text)) failures.push(`${path.relative(root.pathname, file)} contains forbidden MAIN-world network instrumentation`);
+      }
     }
   }
 }

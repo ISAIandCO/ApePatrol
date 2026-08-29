@@ -7,4 +7,7 @@
 .apepatrol-action-heading { margin-top: 4px; padding: 6px 8px 3px; border-top: 1px solid #d7dde5; color: #4b5563; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .apepatrol-enrichment-result { max-height: 230px; margin: 5px 3px 3px; padding: 8px; overflow: auto; border: 1px solid #ccd4df; border-radius: 5px; background: #f4f7fa; color: #111827; white-space: pre-wrap; overflow-wrap: anywhere; }
 .apepatrol-ioc-description { display: block; width: 100%; margin-block: 8px; padding: 7px; }
+.apepatrol-ioc-description-submit { margin: 6px 2px; }
+.apepatrol-ioc-description-status { margin-inline-start: 6px; font-size: 12px; }
+.apepatrol-ioc-description-status.error { color: #b62929; }
 .apepatrol-field-alias { margin-inline-start: 4px; opacity: .72; font-size: .92em; }

@@ -21,6 +21,10 @@ describe("security invariants", () => {
     const text = (await Promise.all((await sourceFiles("src")).map((file) => readFile(file, "utf8")))).join("\n");
     expect(text).not.toContain("globalMonkeyOptions");
     expect(text).not.toContain("__zone_symbol__xhrURL");
+    expect(text).not.toMatch(/world\s*:\s*["']MAIN["']/);
+    expect(text).not.toContain("window.postMessage(");
+    expect(text).not.toMatch(/window\.fetch\s*=/);
+    expect(text).not.toMatch(/XMLHttpRequest\.prototype\.(?:open|send)\s*=/);
   });
   it("contains no remotely loaded script", async () => {
     const html = (await Promise.all((await sourceFiles("src/static")).filter((file) => file.endsWith(".html")).map((file) => readFile(file, "utf8")))).join("\n");

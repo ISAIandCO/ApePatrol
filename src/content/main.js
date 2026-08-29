@@ -30,7 +30,6 @@ async function initialize() {
   const settings = response.settings;
   const logger = createLogger(settings.debugLogging);
   await browser.runtime.sendMessage({ type: "content:ready" });
-  window.postMessage({ source: "apepatrol", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
 
   const adapter = new SiemDomAdapter();
   const client = new SiemApiClient(location.origin, {
@@ -75,13 +74,20 @@ async function initialize() {
         case "siem:table-preview":
           return { ok: true, preview: tableTools.preview(message.operation, message.table, message.row) };
         case "siem:table-apply":
-          return { ok: true, result: await tableTools.apply(message.preview, { confirmed: message.confirmed === true }) };
+          if (!settings.features.tableListTools) return { ok: false, error: "Table List tools are disabled", kind: "feature-unavailable" };
+          return browser.runtime.sendMessage({
+            type: "siem:table-list:apply",
+            operation: message.preview?.operation,
+            token: message.preview?.token,
+            row: message.preview?.row,
+            confirmed: message.confirmed === true,
+          });
         case "siem:asset": {
           const capabilities = await capabilitiesPromise;
           const asset = await getAssetContext(client, {
             assetId: event["asset.id"] ?? event["event_src.asset.id"] ?? event["src.asset.id"] ?? event["dst.asset.id"],
             assetName: event["event_src.asset"] ?? event["src.asset"] ?? event["dst.asset"] ?? event["event_src.host"],
-            includeEdr: capabilities.edr === true,
+            includeEdr: capabilities.edr === true && !settings.features.disableEdrIntegration,
           });
           return { ok: true, asset };
         }

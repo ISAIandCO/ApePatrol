@@ -3,14 +3,16 @@ import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
 import { proxySiemApiRequest } from "./siem-proxy.js";
 import { IOC_API_PROVIDERS, lookupIoc } from "./ioc-enrichment.js";
+import { setIocDescription } from "./ioc-description.js";
+import { applyTableListMutation } from "./table-list.js";
 
 const CONTENT_PREFIX = "apepatrol-content-";
-const BRIDGE_PREFIX = "apepatrol-bridge-";
+const LEGACY_BRIDGE_PREFIX = "apepatrol-bridge-";
 
 async function refreshRegistrations() {
   const settings = await loadSettings();
   const registered = await browser.scripting.getRegisteredContentScripts();
-  const ours = registered.filter((script) => script.id.startsWith(CONTENT_PREFIX) || script.id.startsWith(BRIDGE_PREFIX));
+  const ours = registered.filter((script) => script.id.startsWith(CONTENT_PREFIX) || script.id.startsWith(LEGACY_BRIDGE_PREFIX));
   if (ours.length) await browser.scripting.unregisterContentScripts({ ids: ours.map((script) => script.id) });
   const scripts = [];
   let index = 0;
@@ -27,17 +29,6 @@ async function refreshRegistrations() {
       persistAcrossSessions: true,
       world: "ISOLATED",
     });
-    if (settings.features.addIocDescription) {
-      scripts.push({
-        id: `${BRIDGE_PREFIX}${index}`,
-        matches: [pattern],
-        js: ["network-interceptor.js"],
-        allFrames: false,
-        runAt: "document_start",
-        persistAcrossSessions: true,
-        world: "MAIN",
-      });
-    }
     index += 1;
   }
   if (scripts.length) await browser.scripting.registerContentScripts(scripts);
@@ -176,6 +167,20 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
         const origin = normalizeOrigin(new URL(sender.tab.url).origin);
         return { ok: true, response: await proxySiemApiRequest(origin, message) };
+      }
+      case "siem:ioc-description:set": {
+        if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
+        const settings = await loadSettings();
+        if (!settings.features.addIocDescription) throw new Error("IOC description is disabled");
+        const origin = normalizeOrigin(new URL(sender.tab.url).origin);
+        return { ok: true, result: await setIocDescription(origin, message, settings) };
+      }
+      case "siem:table-list:apply": {
+        if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
+        const settings = await loadSettings();
+        if (!settings.features.tableListTools) throw new Error("Table List tools are disabled");
+        const origin = normalizeOrigin(new URL(sender.tab.url).origin);
+        return { ok: true, result: await applyTableListMutation(origin, message) };
       }
       default:
         return undefined;

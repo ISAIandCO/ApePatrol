@@ -3,6 +3,7 @@ import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
+import { loadOptionalPopupFeatures } from "./feature-loader.js";
 
 const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null };
 const byId = (id) => document.getElementById(id);
@@ -25,6 +26,23 @@ function switchPanel(id) {
   document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.dataset.panel === id));
 }
 
+function setPanelAvailability(id, available) {
+  const panel = byId(id);
+  const button = document.querySelector(`nav button[data-panel='${id}']`);
+  if (panel) panel.hidden = !available;
+  if (button) button.hidden = !available;
+  if (!available && panel?.classList.contains("active")) switchPanel("event");
+}
+
+function applyFeatureVisibility() {
+  const features = state.settings.features;
+  setPanelAvailability("process", features.processTree);
+  setPanelAvailability("related", features.relatedEvents);
+  setPanelAvailability("incidents", features.incidentContext);
+  setPanelAvailability("ai", features.aiAssistant);
+  byId("table-list-tools").hidden = !features.tableListTools;
+}
+
 function renderEvent() {
   byId("event-json").textContent = JSON.stringify(state.context?.event ?? {}, null, 2);
   const found = Object.keys(state.context?.event ?? {}).length;
@@ -34,9 +52,11 @@ function renderEvent() {
       ? "MP SIEM detected · event card is closed or still loading"
       : "Configured origin reached · MP SIEM UI not detected");
   const incidentId = state.context?.event?.incident_id;
-  byId("incident-output").textContent = incidentId
-    ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
-    : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
+  if (state.settings.features.incidentContext) {
+    byId("incident-output").textContent = incidentId
+      ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
+      : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
+  }
   const ai = state.settings.ai;
   byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. Fields currently visible: ${Object.keys(state.context?.event ?? {}).join(", ") || "none"}. Nothing is sent until you click below and confirm.`;
   byId("ai-run").disabled = !state.settings.features.aiAssistant || !ai.endpoint;
@@ -139,16 +159,26 @@ async function applyTableOperation(operation) {
 async function initialize() {
   [state.tab] = await browser.tabs.query({ active: true, currentWindow: true });
   const settingsResponse = await browser.runtime.sendMessage({ type: "settings:get" });
+  if (!settingsResponse?.ok) throw new Error(settingsResponse?.error ?? "ApePatrol settings are unavailable");
   state.settings = settingsResponse.settings;
   state.context = await sendToContent({ type: "siem:get-context" });
+  applyFeatureVisibility();
   renderEvent();
-  const related = await sendToContent({ type: "siem:related" });
-  state.related = related.actions;
-  renderRelated();
-  if (state.context.event.correlation_name) {
-    const ruleContext = await sendToContent({ type: "siem:rule-context" });
-    state.knowledgeBaseUrl = ruleContext.knowledgeBaseUrl;
+  const optional = await loadOptionalPopupFeatures({ settings: state.settings, context: state.context, request: sendToContent });
+  if (optional.related?.ok) {
+    state.related = optional.related.value.actions;
+    renderRelated();
+  } else if (optional.related) {
+    showError(byId("related-output"), optional.related.error);
+  } else if (state.settings.features.relatedEvents) {
+    renderRelated();
+  }
+  if (optional.rule?.ok) {
+    state.knowledgeBaseUrl = optional.rule.value.knowledgeBaseUrl;
     byId("open-rule").disabled = !state.knowledgeBaseUrl;
+  } else if (optional.rule) {
+    byId("open-rule").disabled = true;
+    byId("open-rule").title = optional.rule.error?.message ?? "Rule context is unavailable";
   }
 }
 
