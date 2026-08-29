@@ -48,27 +48,49 @@ function parentReferences(event) {
   return references;
 }
 
-function wouldCycle(nodes, childId, parentId) {
-  let current = parentId;
-  const seen = new Set([childId]);
-  while (current) {
-    if (seen.has(current)) return true;
-    seen.add(current);
-    current = nodes.get(current)?.parentId ?? null;
-  }
-  return false;
+function referenceKey(host, reference) {
+  return `${host}|${reference.kind}:${reference.value}`;
 }
 
-export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {}) {
+function addToIndex(index, key, node) {
+  const values = index.get(key) ?? [];
+  values.push(node);
+  index.set(key, values);
+}
+
+function latestPrior(candidates, node, minimumTime = -Infinity) {
+  if (!candidates?.length) return null;
+  let low = 0;
+  let high = candidates.length - 1;
+  let match = -1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const candidate = candidates[middle];
+    const prior = candidate.time < node.time || (candidate.time === node.time && candidate.order < node.order);
+    if (prior) {
+      match = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  const candidate = match >= 0 ? candidates[match] : null;
+  return candidate && candidate.time >= minimumTime ? candidate : null;
+}
+
+export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64, pidParentWindowMs = 24 * 60 * 60_000 } = {}) {
   if (!Array.isArray(events) || events.length === 0) return { nodes: [], roots: [], truncated: false };
   const sorted = [...events].sort((a, b) => asTime(a) - asTime(b));
   const nodes = new Map();
+  let order = 0;
   for (const event of sorted.slice(0, maxNodes)) {
     const identity = processIdentity(event);
     if (identity.kind === "guid" && nodes.has(identity.id)) continue;
+    const host = String(event["event_src.host"] ?? "unknown");
     nodes.set(identity.id, {
       id: identity.id,
       identity,
+      host,
       references: processReferences(event),
       parentRefs: parentReferences(event),
       parentId: null,
@@ -76,42 +98,57 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {
       event,
       time: asTime(event),
       depth: 0,
+      order: order++,
     });
   }
   const list = [...nodes.values()];
+  const referenceIndex = new Map();
+  for (const node of list) {
+    for (const reference of node.references) addToIndex(referenceIndex, referenceKey(node.host, reference), node);
+  }
+  let parentIndexLookups = 0;
   for (const node of list) {
     if (!node.parentRefs.length) continue;
-    const candidates = list.filter((candidate) => {
-      if (candidate.id === node.id || !node.parentRefs.some((parentRef) => candidate.references.some((reference) => reference.kind === parentRef.kind && reference.value === parentRef.value))) return false;
-      return candidate.time <= node.time;
-    });
-    const parent = candidates.sort((a, b) => b.time - a.time)[0];
-    if (parent && !wouldCycle(nodes, node.id, parent.id)) node.parentId = parent.id;
+    let parent = null;
+    for (const reference of [...node.parentRefs].sort((a, b) => Number(a.kind === "pid") - Number(b.kind === "pid"))) {
+      parentIndexLookups += 1;
+      const minimumTime = reference.kind === "pid" ? node.time - pidParentWindowMs : -Infinity;
+      parent = latestPrior(referenceIndex.get(referenceKey(node.host, reference)), node, minimumTime);
+      if (parent) break;
+    }
+    if (parent) node.parentId = parent.id;
   }
-  const depthOf = (node, seen = new Set()) => {
-    if (!node.parentId || seen.has(node.id)) return 0;
-    seen.add(node.id);
-    const parent = nodes.get(node.parentId);
-    return parent ? Math.min(maxDepth, depthOf(parent, seen) + 1) : 0;
-  };
   for (const node of list) {
-    node.depth = depthOf(node);
-    if (node.depth >= maxDepth) node.parentId = null;
+    const parent = nodes.get(node.parentId);
+    const depth = parent ? parent.depth + 1 : 0;
+    if (depth >= maxDepth) {
+      node.parentId = null;
+      node.depth = 0;
+    } else {
+      node.depth = depth;
+    }
   }
   for (const node of list) if (node.parentId) nodes.get(node.parentId)?.children.push(node.id);
   return {
     nodes: list,
     roots: list.filter((node) => !node.parentId).map((node) => node.id),
     truncated: events.length > maxNodes,
+    diagnostics: {
+      inputEvents: events.length,
+      indexedNodes: list.length,
+      referenceIndexKeys: referenceIndex.size,
+      parentIndexLookups,
+    },
   };
 }
 
-function closestProcessNode(nodes, reference, sourceTime) {
-  const candidates = nodes.filter((node) => node.references.some((item) => item.kind === reference.kind && item.value === reference.value));
+function closestProcessNode(nodes, reference, sourceTime, sourceHost) {
+  const candidates = nodes
+    .filter((node) => node.host === sourceHost && node.references.some((item) => item.kind === reference.kind && item.value === reference.value))
+    .sort((a, b) => a.time - b.time || a.order - b.order);
   if (!candidates.length) return null;
-  const prior = candidates.filter((node) => node.time <= sourceTime);
-  const pool = prior.length ? prior : candidates;
-  return [...pool].sort((a, b) => Math.abs(sourceTime - a.time) - Math.abs(sourceTime - b.time))[0] ?? null;
+  const virtualNode = { time: sourceTime, order: Number.MAX_SAFE_INTEGER };
+  return latestPrior(candidates, virtualNode) ?? candidates[0];
 }
 
 export function findSourceProcessNodeId(graph, sourceEvent) {
@@ -121,9 +158,10 @@ export function findSourceProcessNodeId(graph, sourceEvent) {
   if (exact) return exact.id;
   const references = processReferences(sourceEvent);
   const sourceTime = asTime(sourceEvent);
+  const sourceHost = String(sourceEvent["event_src.host"] ?? "unknown");
   for (const kind of ["guid", "pid"]) {
     const reference = references.find((item) => item.kind === kind);
-    const match = reference && closestProcessNode(graph.nodes, reference, sourceTime);
+    const match = reference && closestProcessNode(graph.nodes, reference, sourceTime, sourceHost);
     if (match) return match.id;
   }
   return null;
@@ -144,18 +182,4 @@ export function orderProcessTree(graph) {
   graph.roots.map((id) => nodes.get(id)).filter(Boolean).sort((a, b) => a.time - b.time).forEach(visit);
   graph.nodes.filter((node) => !visited.has(node.id)).sort((a, b) => a.time - b.time).forEach(visit);
   return ordered;
-}
-
-export async function boundedMap(items, concurrency, mapper, signal) {
-  const results = new Array(items.length);
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      if (signal?.aborted) throw signal.reason;
-      const current = index++;
-      results[current] = await mapper(items[current], current);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, items.length || 1)) }, worker));
-  return results;
 }

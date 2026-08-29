@@ -49,6 +49,30 @@ describe("process graph", () => {
     const parent = graph.nodes.find((node) => node.id === graph.nodes.find((node) => node.event.uuid === "child").parentId);
     expect(parent.event.uuid).toBe("new");
   });
+  it("does not link a reused PID outside the parent time window", () => {
+    const oldProcess = event({ uuid: "old", time: "2026-01-01T00:00:00Z", "object.process.id": "20" });
+    const child = event({ uuid: "child", time: "2026-01-03T00:00:00Z", "object.process.id": "30", "object.process.parent.id": "20" });
+    const graph = buildProcessGraph([oldProcess, child]);
+    expect(graph.nodes.find((node) => node.event.uuid === "child").parentId).toBeNull();
+  });
+  it("never links equal PIDs across hosts", () => {
+    const parent = event({ uuid: "parent", "event_src.host": "host-a", "object.process.id": "20" });
+    const child = event({ uuid: "child", time: "2026-01-01T00:00:01Z", "event_src.host": "host-b", "object.process.id": "30", "object.process.parent.id": "20" });
+    const graph = buildProcessGraph([parent, child]);
+    expect(graph.nodes.find((node) => node.event.uuid === "child").parentId).toBeNull();
+  });
+  it("uses bounded indexed lookups for 10,000 process events", () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => event({
+      uuid: `event-${index}`,
+      time: new Date(Date.UTC(2026, 0, 1) + index * 1000).toISOString(),
+      "object.process.guid": `process-${index}`,
+      ...(index ? { "object.process.parent.guid": `process-${index - 1}` } : {}),
+    }));
+    const graph = buildProcessGraph(events, { maxNodes: 10_000, maxDepth: 10_001 });
+    expect(graph.nodes).toHaveLength(10_000);
+    expect(graph.diagnostics.parentIndexLookups).toBeLessThanOrEqual(20_000);
+    expect(graph.nodes.filter((node) => node.parentId)).toHaveLength(9_999);
+  });
   it("supports missing GUID and respects max nodes", () => expect(buildProcessGraph([event(), event({ uuid: "2" })], { maxNodes: 1 }).truncated).toBe(true));
   it("finds the originally selected process by GUID when its event UUID is not a process-start event", () => {
     const start = event({ uuid: "start", time: "2026-01-01T00:00:00Z", "object.process.guid": "PROCESS" });

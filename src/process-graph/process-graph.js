@@ -1,6 +1,8 @@
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { buildProcessGraphView } from "../siem/process/view-model.js";
+import { ProcessSpatialIndex } from "./spatial-index.js";
+import { filterProcessNodes } from "../siem/process/filters.js";
 
 const byId = (id) => document.getElementById(id);
 const canvas = byId("process-canvas");
@@ -8,6 +10,7 @@ const context = canvas.getContext("2d");
 const tooltip = byId("process-tooltip");
 const params = new URLSearchParams(location.search);
 const sourceTabId = Number(params.get("tabId"));
+const snapshotId = params.get("snapshotId");
 
 const state = {
   graph: null,
@@ -29,7 +32,24 @@ const state = {
   pan: null,
   pointerDown: null,
   search: "",
+  spatialIndex: new ProcessSpatialIndex(),
+  spatialDirty: true,
+  simulationIterations: 0,
+  stale: false,
+  snapshotCreatedAt: null,
+  visibleNodeIds: new Set(),
+  filters: { relations: "all", hideIsolated: false },
 };
+
+function visibleNodes() { return state.nodes.filter((node) => state.visibleNodeIds.has(node.id)); }
+
+function updateVisibleNodes() {
+  const selectedId = state.nodes.find((node) => node.selected)?.id ?? null;
+  state.visibleNodeIds = filterProcessNodes(state.nodes, state.filters, selectedId);
+  state.spatialDirty = true;
+  byId("filter-count").textContent = `Показано ${state.visibleNodeIds.size} из ${state.nodes.length} процессов`;
+  scheduleDraw();
+}
 
 function setStatus(message, error = false) {
   byId("status").textContent = message;
@@ -88,6 +108,7 @@ function seedTimelineLayout() {
 function seedLayout() {
   if (state.layout === "timeline") seedTimelineLayout();
   else seedForceLayout();
+  state.spatialDirty = true;
 }
 
 function worldToScreen(node) {
@@ -120,17 +141,19 @@ function resizeCanvas() {
 }
 
 function fitGraph() {
-  if (!state.nodes.length) return;
-  const minimumX = Math.min(...state.nodes.map((node) => node.x - node.radius));
-  const maximumX = Math.max(...state.nodes.map((node) => node.x + node.radius));
-  const minimumY = Math.min(...state.nodes.map((node) => node.y - node.radius));
-  const maximumY = Math.max(...state.nodes.map((node) => node.y + node.radius));
+  const nodes = visibleNodes();
+  if (!nodes.length) return;
+  const minimumX = Math.min(...nodes.map((node) => node.x - node.radius));
+  const maximumX = Math.max(...nodes.map((node) => node.x + node.radius));
+  const minimumY = Math.min(...nodes.map((node) => node.y - node.radius));
+  const maximumY = Math.max(...nodes.map((node) => node.y + node.radius));
   const graphWidth = Math.max(1, maximumX - minimumX);
   const graphHeight = Math.max(1, maximumY - minimumY);
   const padding = 72;
   state.scale = Math.max(.08, Math.min(2.2, (state.width - padding * 2) / graphWidth, (state.height - padding * 2) / graphHeight));
   state.offsetX = state.width / 2 - ((minimumX + maximumX) / 2) * state.scale;
   state.offsetY = state.height / 2 - ((minimumY + maximumY) / 2) * state.scale;
+  state.spatialDirty = true;
   scheduleDraw();
 }
 
@@ -221,6 +244,9 @@ function simulationStep() {
     }
   }
   state.alpha *= .982;
+  state.simulationIterations += 1;
+  if (state.simulationIterations >= 300) state.alpha = 0;
+  state.spatialDirty = true;
 }
 
 function themeColors() {
@@ -320,7 +346,7 @@ function drawNode(node, colors) {
     context.arc(point.x, point.y, radius + 5, 0, Math.PI * 2);
     context.stroke();
   }
-  const showLabel = state.scale >= .48 && (active || matches && (state.nodes.length < 140 || node.connectionCount > 1));
+  const showLabel = state.scale >= .48 && (active || matches && (state.visibleNodeIds.size < 140 || node.connectionCount > 1));
   if (!showLabel) return;
   const fontSize = Math.max(10, Math.min(14, 11 * Math.sqrt(state.scale)));
   context.font = `${active ? 650 : 500} ${fontSize}px system-ui, sans-serif`;
@@ -337,11 +363,16 @@ function draw() {
   context.fillRect(0, 0, state.width, state.height);
   drawGrid(colors);
   for (const edge of state.edges) {
+    if (!state.visibleNodeIds.has(edge.sourceId) || !state.visibleNodeIds.has(edge.targetId)) continue;
     const source = state.nodeMap.get(edge.sourceId);
     const target = state.nodeMap.get(edge.targetId);
     if (source && target) drawArrow(source, target, colors, source.selected || target.selected || source === state.hovered || target === state.hovered);
   }
-  for (const node of state.nodes) drawNode(node, colors);
+  for (const node of visibleNodes()) drawNode(node, colors);
+  if (state.spatialDirty) {
+    state.spatialIndex.rebuild(visibleNodes(), worldToScreen, (node) => Math.max(7, node.radius * state.scale + 5));
+    state.spatialDirty = false;
+  }
 }
 
 function frame() {
@@ -353,22 +384,16 @@ function frame() {
 
 function startSimulation() {
   state.alpha = 1;
+  state.simulationIterations = 0;
   scheduleDraw();
 }
 
 function hitTest(x, y) {
-  let nearest = null;
-  let nearestDistance = Infinity;
-  for (const node of state.nodes) {
-    const point = worldToScreen(node);
-    const distance = Math.hypot(point.x - x, point.y - y);
-    const threshold = Math.max(7, node.radius * state.scale + 5);
-    if (distance <= threshold && distance < nearestDistance) {
-      nearest = node;
-      nearestDistance = distance;
-    }
+  if (state.spatialDirty) {
+    state.spatialIndex.rebuild(visibleNodes(), worldToScreen, (node) => Math.max(7, node.radius * state.scale + 5));
+    state.spatialDirty = false;
   }
-  return nearest;
+  return state.spatialIndex.hit(x, y);
 }
 
 function tooltipRow(label, value) {
@@ -436,6 +461,7 @@ canvas.addEventListener("pointermove", (event) => {
     state.dragNode.y = world.y;
     state.dragNode.vx = 0;
     state.dragNode.vy = 0;
+    state.spatialDirty = true;
     state.alpha = Math.max(state.alpha, .25);
     scheduleDraw();
     return;
@@ -443,6 +469,7 @@ canvas.addEventListener("pointermove", (event) => {
   if (state.pan) {
     state.offsetX = state.pan.offsetX + position.x - state.pan.x;
     state.offsetY = state.pan.offsetY + position.y - state.pan.y;
+    state.spatialDirty = true;
     scheduleDraw();
     return;
   }
@@ -486,6 +513,7 @@ canvas.addEventListener("wheel", (event) => {
   state.scale = Math.max(.05, Math.min(4, state.scale * factor));
   state.offsetX = position.x - world.x * state.scale;
   state.offsetY = position.y - world.y * state.scale;
+  state.spatialDirty = true;
   scheduleDraw();
 }, { passive: false });
 
@@ -507,18 +535,16 @@ function selectLayout(layout) {
   fitGraph();
 }
 
-async function loadGraph() {
-  if (!Number.isInteger(sourceTabId) || sourceTabId <= 0) throw new Error("Не передан идентификатор вкладки MaxPatrol SIEM");
-  byId("loading").hidden = false;
-  setStatus("Получаю события процессов из MaxPatrol SIEM…");
-  const response = await browser.tabs.sendMessage(sourceTabId, { type: "siem:process" });
-  if (!response?.ok) throw new Error(response?.error ?? "Расширение не получило данные процессов");
+function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null } = {}) {
   const view = buildProcessGraphView(response.graph, response.sourceNodeId);
   state.graph = response.graph;
   state.origin = response.origin;
   state.nodes = view.nodes;
   state.edges = view.edges;
   state.nodeMap = new Map(state.nodes.map((node) => [node.id, node]));
+  updateVisibleNodes();
+  state.stale = stale;
+  state.snapshotCreatedAt = snapshotCreatedAt;
   byId("loading").hidden = true;
   byId("empty").hidden = state.nodes.length > 0;
   canvas.hidden = state.nodes.length === 0;
@@ -528,16 +554,69 @@ async function loadGraph() {
   }
   const selected = state.nodes.some((node) => node.selected);
   const truncated = response.graph?.truncated ? " · достигнут лимит узлов" : "";
-  setStatus(`${state.nodes.length} процессов · ${state.edges.length} parent/child-связей${selected ? " · исходный процесс выделен" : " · исходный процесс не сопоставлен"}${truncated}`);
+  const staleLabel = state.stale ? " · локальный снимок, источник SIEM недоступен" : "";
+  setStatus(`${state.nodes.length} процессов · ${state.edges.length} parent/child-связей${selected ? " · исходный процесс выделен" : " · исходный процесс не сопоставлен"}${truncated}${staleLabel}`);
   seedLayout();
   if (state.layout === "force") startSimulation();
   requestAnimationFrame(fitGraph);
 }
 
+function markGraphStale(message = "Исходная вкладка SIEM закрыта; текущий локальный снимок продолжает работать") {
+  state.stale = true;
+  setStatus(message);
+}
+
+async function loadSnapshot() {
+  if (!snapshotId) return false;
+  const result = await browser.runtime.sendMessage({ type: "graph:snapshot:get", id: snapshotId });
+  if (!result?.ok) throw new Error(result?.error ?? "Не удалось загрузить снимок графа");
+  if (!result.snapshot) return false;
+  applyGraphResponse(result.snapshot.response, { snapshotCreatedAt: result.snapshot.createdAt });
+  if (Number.isInteger(sourceTabId) && sourceTabId > 0) {
+    try { await browser.tabs.get(sourceTabId); } catch { markGraphStale(); }
+  } else {
+    markGraphStale("Граф загружен из локального снимка без привязанной вкладки SIEM");
+  }
+  return true;
+}
+
+async function reloadGraph() {
+  if (!Number.isInteger(sourceTabId) || sourceTabId <= 0) {
+    if (state.nodes.length) {
+      markGraphStale("Нельзя обновить данные: исходная вкладка SIEM недоступна");
+      return false;
+    }
+    throw new Error("Не передан идентификатор вкладки MaxPatrol SIEM");
+  }
+  byId("loading").hidden = false;
+  setStatus("Получаю события процессов из MaxPatrol SIEM…");
+  try {
+    const response = await browser.tabs.sendMessage(sourceTabId, { type: "siem:process" });
+    if (!response?.ok) throw new Error(response?.error ?? "Расширение не получило данные процессов");
+    applyGraphResponse(response);
+    return true;
+  } catch (error) {
+    byId("loading").hidden = true;
+    if (state.nodes.length) {
+      markGraphStale(`Не удалось обновить данные (${error.message}); текущий снимок сохранён`);
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function initializeGraph() {
+  byId("loading").hidden = false;
+  setStatus("Загружаю локальный снимок графа…");
+  let snapshotLoaded = false;
+  try { snapshotLoaded = await loadSnapshot(); } catch (error) { setStatus(`Снимок недоступен: ${error.message}`); }
+  if (!snapshotLoaded) await reloadGraph();
+}
+
 byId("layout-force").addEventListener("click", () => selectLayout("force"));
 byId("layout-timeline").addEventListener("click", () => selectLayout("timeline"));
 byId("fit-graph").addEventListener("click", fitGraph);
-byId("reload-graph").addEventListener("click", () => loadGraph().catch((error) => {
+byId("reload-graph").addEventListener("click", () => reloadGraph().catch((error) => {
   byId("loading").hidden = true;
   setStatus(error.message, true);
 }));
@@ -546,11 +625,47 @@ byId("process-search").addEventListener("input", (event) => {
   scheduleDraw();
 });
 
+function readFilters() {
+  const timeValue = (id) => {
+    const value = byId(id).value;
+    const parsed = value ? Date.parse(value) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  state.filters = {
+    name: byId("filter-process-name").value.trim(),
+    path: byId("filter-process-path").value.trim(),
+    account: byId("filter-account").value.trim(),
+    pid: byId("filter-pid").value.trim(),
+    host: byId("filter-host").value.trim(),
+    eventType: byId("filter-event-type").value.trim(),
+    relations: byId("filter-relations").value,
+    hideIsolated: byId("filter-hide-isolated").checked,
+    timeFrom: timeValue("filter-time-from"),
+    timeTo: timeValue("filter-time-to"),
+  };
+  updateVisibleNodes();
+}
+
+for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) {
+  byId(id).addEventListener("input", readFilters);
+}
+byId("filter-relations").addEventListener("change", readFilters);
+byId("filter-hide-isolated").addEventListener("change", readFilters);
+byId("filter-reset").addEventListener("click", () => {
+  for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) byId(id).value = "";
+  byId("filter-relations").value = "all";
+  byId("filter-hide-isolated").checked = false;
+  readFilters();
+});
+
 new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", scheduleDraw);
+browser.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === sourceTabId && state.nodes.length) markGraphStale();
+});
 updateLayoutButtons();
 resizeCanvas();
-loadGraph().catch((error) => {
+initializeGraph().catch((error) => {
   byId("loading").hidden = true;
   byId("empty").hidden = false;
   byId("empty").textContent = error.message;

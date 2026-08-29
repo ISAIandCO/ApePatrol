@@ -17,6 +17,7 @@
       <button id="reload-graph">Обновить данные</button>
     </div>
   </header>
+  <details class="filters"><summary>Локальные фильтры графа</summary><div class="filter-grid"><label>Процесс<input id="filter-process-name" type="search"></label><label>Путь<input id="filter-process-path" type="search"></label><label>Учётная запись<input id="filter-account" type="search"></label><label>PID<input id="filter-pid" type="search"></label><label>Хост<input id="filter-host" type="search"></label><label>Источник / тип события<input id="filter-event-type" type="search"></label><label>С<input id="filter-time-from" type="datetime-local"></label><label>По<input id="filter-time-to" type="datetime-local"></label><label>Связи<select id="filter-relations"><option value="all">Все</option><option value="ancestors">Только предки выбранного</option><option value="descendants">Только потомки выбранного</option><option value="direct">Только прямые связи</option></select></label><label class="checkbox"><input id="filter-hide-isolated" type="checkbox"> Скрыть изолированные узлы</label><button id="filter-reset" type="button">Сбросить фильтры</button></div><p id="filter-count"></p></details>
   <main>
     <canvas id="process-canvas" aria-label="Интерактивный граф связей процессов"></canvas>
     <div id="loading" class="message">Получаю события и строю связи…</div>
