@@ -8,17 +8,22 @@ ApePatrol — расширение-компаньон для расследов�
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.2.0
+## Возможности ApePatrol 3.3.0
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
-- интерактивный force-directed граф процессов с parent/child-связями и хронологической раскладкой для Sysmon 1, Windows 4688 и Linux `execve`: индексированная корреляция без all-pairs scan, отдельная вкладка, session-snapshot, локальные фильтры, размер по числу связей, выделение исходного процесса, подробности по наведению и открытие события по клику;
+- progressive process graph для Sysmon 1, Windows 4688 и Linux `execve`: небольшой seed-диапазон, paged expansion родителей/детей/siblings/соседних интервалов, cancel, dedup, явное расширение лимита, time slider, session-snapshot и переподключение к другой вкладке того же SIEM;
 - Related events для host, account, IP, process GUID, hash и executable;
 - field actions только при отсутствии штатного action menu;
 - отображение связанного `incident_id` без угадывания mutating API;
 - Table Lists read/add/remove с preview и явным подтверждением;
 - 48 встроенных русскоязычных PDQL-фильтров с описаниями и проверкой доступных полей;
 - IOC-проверки из иконки у конкретного поля: VirusTotal, AbuseIPDB, Kaspersky OpenTIP и ThreatFox API, а также безопасные ссылки на Shodan, GreyNoise, MalwareBazaar, URLhaus и другие отчёты;
+- подтверждаемый Batch IOC enrichment с preview, независимыми partial results, bounded concurrency/backoff, обработкой HTTP 429, retry выбранного провайдера, cancel и локальным TTL cache без API-ключей;
+- локальный Investigation Workspace в IndexedDB: события, процессы, IOC, hosts, accounts, incident references, заметки, теги, поиск, сортировка и JSON/Markdown export;
+- Event Compare для 2–3 сохранённых событий с группами process/network/account/host/rule/raw и копированием diff в JSON/Markdown;
+- Rule Intelligence с rule metadata, KB/references и только явными MITRE ATT&CK mappings из SIEM;
+- Enterprise Profiles: versioned import/export non-secret settings, merge/replace validation и Firefox `storage.managed` defaults/locks;
 - опциональное описание IOC через специализированную подтверждаемую SIEM-операцию без перехвата `fetch`/XHR;
 - скрытие EDR UI без блокирования XHR/fetch;
 - live-применение feature toggles, IOC-провайдеров, aliases, filters и process limits к уже открытой SIEM-вкладке;

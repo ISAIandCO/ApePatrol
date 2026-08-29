@@ -1,6 +1,6 @@
-# ApePatrol 3.2 implementation report
+# ApePatrol 3.3 implementation report
 
-Baseline: `main` commit `2c5f45bbc9d91ab0506568d5a90cac5bd9ccb21e`. Latest published release during the audit: `v3.1.0`; no open issues were present. This report covers the platform-hardening scope selected from `apepatrol_codex_implementation_spec.md`.
+Platform-hardening 3.2 was merged as PR #3 at `06bff61e9b95156d38b3108991f61550d89f4c4e`. Version 3.3 implements the analyst-workflow scope from `apepatrol_codex_implementation_spec.md` on top of that merge.
 
 ## Implemented P0
 
@@ -20,7 +20,20 @@ Baseline: `main` commit `2c5f45bbc9d91ab0506568d5a90cac5bd9ccb21e`. Latest publi
 - Local no-request filters cover process name/path, account, PID, host, event type, time, ancestors, descendants, direct relations and isolated nodes.
 - AI has exact final-body preview, UTF-8 byte count, selected/allowlist/redacted/full modes, local PII/secret warnings, deterministic truncation and SHA-256 stale-preview protection. Warnings are explicitly not DLP.
 - Stable error codes and structured redacting logger primitives were added.
-- The unused `maxConcurrentRequests` setting was removed because the current process workflow performs one bounded query; keeping a non-functional control was misleading.
+- The old non-functional `maxConcurrentRequests` setting remains removed. Progressive range expansion now has a separate functional `queryConcurrency` limit.
+
+## Implemented P1 analyst workflows
+
+- Progressive process expansion starts with a bounded seed window and uses offset pagination. Parents, children, siblings and adjacent time ranges reuse/deduplicate loaded events, support AbortController cancellation and preserve partial results at the node limit. An explicit action raises the cap up to 10 000.
+- The graph page exposes partial/limit state, range step, dual time sliders and same-origin source-tab reconnection. Expanded responses update the existing session snapshot.
+- Batch IOC enrichment previews each IOC/provider pair and requires confirmation. A bounded worker pool, Retry-After/backoff, HTTP 429 normalization, cancel, per-pair retry, partial results and per-provider TTL cache are implemented. Cache entries never contain API keys.
+- Investigation Workspace persists bounded, sanitized workspaces in extension IndexedDB. Popup/field/graph actions pin events, hosts, accounts, incidents, IOC and processes; the workspace page supports CRUD, notes, tags, search, sort, snapshots and JSON/Markdown export.
+
+## Implemented P2
+
+- Event Compare compares two or three workspace events, normalizes field names, groups process/network/account/host/rule/raw fields and copies JSON/Markdown diff.
+- Rule Intelligence renders rule ID/name/description/category/severity/references/KB. ATT&CK techniques appear only from explicit SIEM metadata.
+- Enterprise Profiles export/import schema-versioned non-secret settings with merge/replace validation. Firefox `storage.managed` supplies defaults and locked paths; background tracks permitted user override paths, preserves underlying user values, and reapplies policy during load/save and live updates.
 
 ## Performance evidence
 
@@ -28,9 +41,9 @@ Synthetic GUID-chain benchmark from the implementation environment:
 
 | Nodes | Edges | Build time | Heap delta | Parent index lookups |
 |---:|---:|---:|---:|---:|
-| 1 000 | 999 | 13.73 ms | 1.17 MiB | 999 |
-| 5 000 | 4 999 | 34.79 ms | 8.47 MiB | 4 999 |
-| 10 000 | 9 999 | 64.17 ms | 9.01 MiB | 9 999 |
+| 1 000 | 999 | 11.53 ms | 1.21 MiB | 999 |
+| 5 000 | 4 999 | 37.21 ms | 8.39 MiB | 4 999 |
+| 10 000 | 9 999 | 63.93 ms | 8.89 MiB | 9 999 |
 
 Wall-clock values are informational; CI asserts graph integrity and bounded lookup growth rather than a fragile shared-runner timing threshold.
 
@@ -38,7 +51,7 @@ Wall-clock values are informational; CI asserts graph integrity and bounded look
 
 - `npm ci`
 - ESLint
-- Vitest (unit, DOM fixture, security and integration-oriented tests)
+- Vitest: 38 files / 168 tests (unit, DOM fixture, security and integration-oriented tests)
 - raw/self-hosted Firefox builds
 - policy scan (including forbidden MAIN-world instrumentation)
 - `web-ext lint`
@@ -49,16 +62,6 @@ Wall-clock values are informational; CI asserts graph integrity and bounded look
 
 Live MaxPatrol SIEM checks remain mandatory for actual 27.3 DOM variants, roles, authentication cookies, provider keys, Table List column ordering and source-tab lifecycle. See `docs/MANUAL_TESTS.md`.
 
-## Deliberately deferred
+## Remaining release gate
 
-The following are useful, but not appropriate to mix into the security/platform PR before live validation:
-
-- targeted progressive ancestors/children pagination and time slider;
-- batch IOC cache/rate-limit UX;
-- Investigation Workspace and export;
-- Event Compare;
-- expanded Rule Intelligence;
-- Enterprise managed profiles;
-- automated Firefox smoke against a realistic permission-granted MP SIEM fixture.
-
-These should be separate product PRs after the P0/P1 platform changes are manually validated. No release is created or merged by this implementation.
+The product scope above is implemented. A realistic permission-granted Firefox/MP SIEM browser fixture is still unavailable in CI, so the expanded live matrix in `docs/MANUAL_TESTS.md` remains mandatory before release. This implementation does not create or merge its product PR automatically.
