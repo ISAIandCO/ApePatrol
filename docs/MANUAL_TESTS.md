@@ -22,12 +22,15 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 
 ## Process
 
-- [ ] Sysmon Event ID 1 tree and timeline.
+- [ ] Sysmon Event ID 1 в свободном force-directed графе и хронологической раскладке.
 - [ ] Windows 4688 with GUID and PID/name fallback.
 - [ ] Linux `execve`.
 - [ ] Empty result, parents, descendants, duplicate, cycle and PID reuse.
-- [ ] Search, source highlight, copy PID/GUID/cmdline and node limit.
-- [ ] Tree показывает parent/child-ветви и сворачивание потомков; Timeline показывает те же узлы строго по времени без иерархии.
+- [ ] Граф открывается в отдельной вкладке и сохраняется после закрытия popup.
+- [ ] Размер узла растёт с числом связей; исходный процесс выделен цветом по UUID, GUID или ближайшему PID.
+- [ ] Наведение показывает поля процесса; клик открывает событие запуска по UUID в новой вкладке SIEM.
+- [ ] Поиск подсвечивает совпадения; масштабирование, панорамирование, перетаскивание узлов, «Вписать», обновление и лимит узлов.
+- [ ] Свободная и хронологическая раскладки показывают одинаковые направленные parent/child-рёбра.
 
 ## Related and incidents
 

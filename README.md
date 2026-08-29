@@ -12,7 +12,7 @@ ApePatrol — независимый open-source проект. Он не свя�
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
-- иерархическое дерево процессов с parent/child-связями и отдельный хронологический timeline для Sysmon 1, Windows 4688 и Linux `execve`;
+- интерактивный force-directed граф процессов с parent/child-связями и хронологической раскладкой для Sysmon 1, Windows 4688 и Linux `execve`: отдельная вкладка, размер по числу связей, выделение исходного процесса, подробности по наведению и открытие события по клику;
 - Related events для host, account, IP, process GUID, hash и executable;
 - field actions только при отсутствии штатного action menu;
 - отображение связанного `incident_id` без угадывания mutating API;

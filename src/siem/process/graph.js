@@ -106,6 +106,29 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64 } = {
   };
 }
 
+function closestProcessNode(nodes, reference, sourceTime) {
+  const candidates = nodes.filter((node) => node.references.some((item) => item.kind === reference.kind && item.value === reference.value));
+  if (!candidates.length) return null;
+  const prior = candidates.filter((node) => node.time <= sourceTime);
+  const pool = prior.length ? prior : candidates;
+  return [...pool].sort((a, b) => Math.abs(sourceTime - a.time) - Math.abs(sourceTime - b.time))[0] ?? null;
+}
+
+export function findSourceProcessNodeId(graph, sourceEvent) {
+  if (!Array.isArray(graph?.nodes) || !sourceEvent || typeof sourceEvent !== "object") return null;
+  const sourceUuid = String(sourceEvent.uuid ?? "");
+  const exact = sourceUuid && graph.nodes.find((node) => String(node.event?.uuid ?? "") === sourceUuid);
+  if (exact) return exact.id;
+  const references = processReferences(sourceEvent);
+  const sourceTime = asTime(sourceEvent);
+  for (const kind of ["guid", "pid"]) {
+    const reference = references.find((item) => item.kind === kind);
+    const match = reference && closestProcessNode(graph.nodes, reference, sourceTime);
+    if (match) return match.id;
+  }
+  return null;
+}
+
 export function orderProcessTree(graph) {
   if (!Array.isArray(graph?.nodes)) return [];
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));

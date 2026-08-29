@@ -9,15 +9,11 @@ describe("Firefox popup sizing", () => {
     expect(bodyRule).toMatch(/\bwidth:\s*760px\s*;/);
     expect(bodyRule).not.toMatch(/\b(?:vw|dvw|svw|lvw)\b/);
   });
-  it("zooms the complete process view instead of changing only its font", async () => {
+  it("opens process visualization in an independent extension tab", async () => {
     const script = await readFile(new URL("../src/popup/popup.js", import.meta.url), "utf8");
-    expect(script).toContain("output.style.zoom = String(state.processScale)");
-    expect(script).not.toContain("output.style.fontSize");
-  });
-  it("loads process data when Tree or Timeline is selected before a graph exists", async () => {
-    const script = await readFile(new URL("../src/popup/popup.js", import.meta.url), "utf8");
-    expect(script).toContain("if (!state.graph) await loadProcessGraph()");
-    expect(script).toContain('selectProcessMode("tree")');
-    expect(script).toContain('selectProcessMode("timeline")');
+    expect(script).toContain("browser.runtime.getURL(`process-graph.html?");
+    expect(script).toContain('openProcessGraph("force")');
+    expect(script).toContain('openProcessGraph("timeline")');
+    expect(script).not.toContain("orderProcessTree");
   });
 });
