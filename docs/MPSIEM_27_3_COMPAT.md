@@ -15,13 +15,11 @@ The adapter is intentionally R27.3-first, not R27.3-only. It uses capability det
 | GET | `/api/siem/v2/rules/correlation/{name}` | correlation metadata | read | native UI only |
 | GET | `/api/v2/events/filters_hierarchy` | filter capability | read | local query links |
 | GET | `/api/v3/events/filters/{id}` | saved filter | read | unavailable |
-| POST | `/api/v3/events/filters` | saved filter creation adapter | write | no server temp filter |
-| DELETE | `/api/v3/events/filters/{id}` | saved filter deletion adapter | write | unavailable |
 | POST | `/api/assets_temporal_readmodel/v1/assets_grid` | assets | read | event fields only |
 | POST | `/api/whitelists/{token}/insert` | Table List add / IOC | write | native workflow preserved |
 | POST | `/api/whitelists/{token}/remove` | Table List remove | write | unavailable |
 
-All calls use an authenticated background XHR so Firefox does not bind long-running searches to the SIEM page lifecycle. The proxy accepts only declared method/path pairs from a configured SIEM tab and always resolves them against that tab's exact origin. Calls check HTTP status; 401/403 are not retried, 404 becomes `unsupported`, and timeouts, invalid JSON and network errors are distinct. Cached metadata is cleared when a content context is destroyed or origin registration changes.
+Calls use an authenticated background XHR so Firefox does not bind long-running searches to the SIEM page lifecycle. The generic proxy accepts only declared read method/path pairs from a configured SIEM tab and always resolves them against that tab's exact origin. `/api/whitelists/{token}/insert|remove` are excluded from that generic route set and available only through specialized confirmed actions which reload Table List metadata and verify the token. Calls check UTF-8 body size and HTTP status; cross-origin redirects are rejected, 401/403 are not retried, 404 becomes `unsupported`, and timeouts, invalid JSON and network errors are distinct. Cached metadata is cleared after relevant live settings changes.
 
 ## Native overlap
 

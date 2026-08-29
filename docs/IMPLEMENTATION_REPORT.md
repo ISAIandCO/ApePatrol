@@ -1,41 +1,64 @@
-# ApePatrol 3.0 implementation report
+# ApePatrol 3.2 implementation report
 
-This release completes the SiemMonkey → ApePatrol transition. ApePatrol is the Firefox-first successor focused on analyst investigation workflows in MaxPatrol SIEM.
+Baseline: `main` commit `2c5f45bbc9d91ab0506568d5a90cac5bd9ccb21e`. Latest published release during the audit: `v3.1.0`; no open issues were present. This report covers the platform-hardening scope selected from `apepatrol_codex_implementation_spec.md`.
 
-## Architecture and Firefox
+## Implemented P0
 
-Chrome service worker and static all-site injection were replaced by a Firefox background event page and `browser.scripting.registerContentScripts()`. Exact-origin permissions drive one ISOLATED bundle and, only when necessary, a narrow MAIN bridge. Code is bundled from ES modules but runs in Firefox-compatible IIFEs.
+- Popup connection and optional-feature initialization are separate. `relatedEvents=false`, an unavailable rule context or a provider failure no longer turns the whole popup into “Not connected”.
+- `incidentContext`, `processTree`, `relatedEvents`, `tableListTools` and `aiAssistant` change the visible/queried UI; disabled EDR no longer triggers EDR asset enrichment.
+- The MAIN-world `fetch`/XHR interceptor and `window.postMessage` channel were removed from source, build and registration. Upgrade cleanup unregisters legacy `apepatrol-bridge-*` registrations.
+- IOC-description and normal Table List writes use specialized runtime actions. Background rechecks configured origin, enabled feature, confirmation, operation, discovered table token, scalar row, UTF-8 body limit, exact method/path and redirect boundary.
+- Security regressions cover forged tokens, generic write-route denial, malformed/oversized bodies, cross-origin redirect, double submit and false-success prevention.
 
-Firefox Desktop 140+ is the baseline because `data_collection_permissions` is required by the privacy model and became available in 140. Android uses 142+. No `strict_max_version` is set.
+## Implemented P1 platform stability
 
-## Existing functionality
+- `storage.onChanged` applies settings to an already-open SIEM tab. Only DOM-feature inputs rebuild injected components; process/search options are read live and relevant API caches are cleared.
+- The R27.3 adapter caches known roots and a field index. Mutation records incrementally discover added ShadowRoots/frames; 500 changes coalesce into one extraction window. ApePatrol's own UI mutations are ignored.
+- Process parent resolution uses host-scoped GUID/PID indexes and binary latest-prior lookup. PID fallback has a 24-hour parent window and never links a process that starts after the child. Depth calculation is linear.
+- The graph stores a versioned `storage.session` snapshot (ten newest, up to 10 000 nodes), survives source-tab closure, reports stale state and keeps local interactions available.
+- Renderer hit testing uses a spatial grid, force simulation has an explicit iteration cap, labels remain simplified for large views, and pan/zoom does not restart layout.
+- Local no-request filters cover process name/path, account, PID, host, event type, time, ancestors, descendants, direct relations and isolated nodes.
+- AI has exact final-body preview, UTF-8 byte count, selected/allowlist/redacted/full modes, local PII/secret warnings, deterministic truncation and SHA-256 stale-preview protection. Warnings are explicitly not DLP.
+- Stable error codes and structured redacting logger primitives were added.
+- The unused `maxConcurrentRequests` setting was removed because the current process workflow performs one bounded query; keeping a non-functional control was misleading.
 
-| Function | Before | 3.0 | Verified on live 27.3 |
-|---|---|---|---|
-| Event context/export/link | global DOM scraping | R27.3 adapter, safe filename/URL | Pending manual matrix |
-| Process tree | recursive N+1, globals, fixed SVG | minimal fields, one query, limits, cycle/PID reuse protection, tree/timeline | Pending |
-| IP/hash links | unsafe templates/window.open | typed providers, encoded values, HTTP(S) only | Unit tested; live pending |
-| VirusTotal | popup key from sync storage | background fetch, local key, explicit permissions | Unit/build tested; live pending |
-| Custom filters | raw interpolation/server temp filter | central PDQL builder; no temp-filter workflow | Unit tested; live pending |
-| Correlation description | duplicate legacy UI | native detection; no duplicate | Fixture tested; live pending |
-| Table Lists | contextless delete icon | list, preview, confirmation, typed errors | Pending |
-| IOC description | DOM attributes/global XHR patch | API mapping, one-use state, XHR/fetch endpoint guard | Build tested; live pending |
-| EDR disable | request left pending | UI-level hide | Pending |
-| AI | automatic unsafe HTML path | disabled by default, modes/redaction, per-send confirm, text-only rendering | Security tested; live pending |
+## Performance evidence
 
-## Security fixes
+Synthetic GUID-chain benchmark from the implementation environment:
 
-Removed all-site execution, global settings exposure, secrets in sync storage, raw HTML sinks, unsafe schemes, unescaped PDQL, Zone.js reliance, uncontrolled interception, synchronous resource XHR, implicit globals and vulnerable vendored jQuery UI 1.12.1. Empty settings, VT migration, hash extraction, null values, 401/403, empty graphs and cycles have explicit handling/tests.
+| Nodes | Edges | Build time | Heap delta | Parent index lookups |
+|---:|---:|---:|---:|---:|
+| 1 000 | 999 | 13.73 ms | 1.17 MiB | 999 |
+| 5 000 | 4 999 | 34.79 ms | 8.47 MiB | 4 999 |
+| 10 000 | 9 999 | 64.17 ms | 9.01 MiB | 9 999 |
 
-## CI and release
+Wall-clock values are informational; CI asserts graph integrity and bounded lookup growth rather than a fragile shared-runner timing threshold.
 
-CI pins Actions by SHA, uses Node 22 and lockfile, runs audit/lint/tests/build/web-ext lint/reproducibility, and uploads an unsigned review ZIP. Release jobs separate read-only build/sign from write-enabled publication, request Mozilla unlisted signing, verify the signed manifest, produce source ZIP/CycloneDX SBOM/updates.json/SHA256SUMS, and publish only after all checks pass.
+## Validation
 
-## Remaining limitations
+- `npm ci`
+- ESLint
+- Vitest (unit, DOM fixture, security and integration-oriented tests)
+- raw/self-hosted Firefox builds
+- policy scan (including forbidden MAIN-world instrumentation)
+- `web-ext lint`
+- reproducibility check
+- graph benchmark
+- production dependency audit
+- package/lock/manifest/commit release consistency
 
-- No real MP SIEM instance is available in CI; live verification remains mandatory.
-- Incident mutations are intentionally absent until documented 27.3 semantics and roles are confirmed.
-- Process graph obtains one bounded ±24h host sample; deployments with very large activity may need a narrower scope or higher manual limit.
-- Sidebar is deferred; popup and feature logic are separated so a later sidebar can reuse them.
-- R27.3 is the primary verified target. Older R24–R27.2 DOM layouts use best-effort legacy sidebar/iframe fallbacks and require live regression testing for each deployed build.
-- Upstream `web-ext` tooling currently brings a dev-only `image-size` DoS advisory with no patched release; it is absent from the XPI and production dependency audit is clean.
+Live MaxPatrol SIEM checks remain mandatory for actual 27.3 DOM variants, roles, authentication cookies, provider keys, Table List column ordering and source-tab lifecycle. See `docs/MANUAL_TESTS.md`.
+
+## Deliberately deferred
+
+The following are useful, but not appropriate to mix into the security/platform PR before live validation:
+
+- targeted progressive ancestors/children pagination and time slider;
+- batch IOC cache/rate-limit UX;
+- Investigation Workspace and export;
+- Event Compare;
+- expanded Rule Intelligence;
+- Enterprise managed profiles;
+- automated Firefox smoke against a realistic permission-granted MP SIEM fixture.
+
+These should be separate product PRs after the P0/P1 platform changes are manually validated. No release is created or merged by this implementation.
