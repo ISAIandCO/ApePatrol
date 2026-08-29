@@ -18,6 +18,22 @@ const API_PROVIDERS = Object.freeze([
   { id: "threatfox", name: "ThreatFox API", types: ["ip", "hash", "domain", "url"] },
 ]);
 
+function workspaceItem(field, value, ioc, event) {
+  const type = ioc ? "ioc"
+    : field === "event_src.host" ? "host"
+      : field.includes("account") ? "account"
+        : field.includes("process") ? "process"
+          : field === "uuid" ? "event" : null;
+  if (!type) return null;
+  return {
+    type,
+    value: String(ioc ? `${ioc.type}:${ioc.value}` : value),
+    label: `${field}: ${String(ioc?.value ?? value).slice(0, 180)}`,
+    sourceEventUuid: event.uuid ?? null,
+    snapshot: ioc ? { iocType: ioc.type, value: ioc.value, sourceField: field } : { field, value },
+  };
+}
+
 export class EventFieldActions {
   constructor(settings) {
     this.settings = settings;
@@ -88,6 +104,16 @@ export class EventFieldActions {
     for (const [label, preset] of [["Open matching events in SIEM (±15m)", "15m"], ["Open matching events in SIEM (±1h)", "1h"], ["Open matching events in SIEM (±24h)", "24h"]]) {
       add(label, () => browser.runtime.sendMessage({ type: "tabs:open", url: buildEventSearchUrl(location.origin, predicate, event.time, preset) }));
     }
+    const pinItem = this.settings.features.investigationWorkspace && workspaceItem(field, value, ioc, event);
+    if (pinItem) add("📌 Прикрепить к расследованию", async () => {
+      const response = await browser.runtime.sendMessage({
+        type: "workspace:item:add",
+        sourceIncidentId: event.incident_id ?? null,
+        item: pinItem,
+      });
+      if (!response?.ok) throw new Error(response?.error ?? "Не удалось прикрепить объект");
+      renderLookupResult(menu, { provider: "Workspace", verdict: "saved", summary: `Добавлено в «${response.workspace.title}»` });
+    }, { keepOpen: true });
     if (field === "external_link") {
       const url = parseSafeExternalUrl(value);
       if (url) add("Open safe link", () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));

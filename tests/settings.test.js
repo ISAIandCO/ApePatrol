@@ -25,7 +25,7 @@ describe("settings schema", () => {
   });
   it("migrates legacy selected AI fields without weakening the new allowlist mode", () => {
     const migrated = normalizeSettings({ schemaVersion: 4, ai: { mode: "selected", allowFields: ["uuid", "time"] } });
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(migrated.ai.selectedFields).toEqual(["uuid", "time"]);
     expect(migrated.ai.allowFields).toEqual(["uuid", "time"]);
     expect(normalizeSettings({ ai: { mode: "allowlist", allowFields: ["uuid"] } }).ai.mode).toBe("allowlist");

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ApePatrol · Investigation Workspace</title>
+  <link rel="stylesheet" href="workspace.css">
+</head>
+<body>
+  <header><div class="brand"><img src="assets/icons/icon-48.png" alt=""><div><h1>Investigation Workspace</h1><p id="workspace-status">Локальные расследования без внешнего backend</p></div></div><button id="workspace-new">Новое расследование</button></header>
+  <aside><input id="workspace-search" type="search" placeholder="Поиск по названию, тегам и заметкам"><select id="workspace-sort"><option value="updated">Сначала обновлённые</option><option value="created">Сначала созданные</option><option value="title">По названию</option></select><nav id="workspace-list"></nav></aside>
+  <main>
+    <div id="workspace-empty">Создайте расследование или прикрепите событие из popup.</div>
+    <section id="workspace-editor" hidden>
+      <div class="editor-heading"><div><input id="workspace-title" aria-label="Название расследования"><p id="workspace-origin"></p></div><div class="actions"><button id="workspace-save">Сохранить</button><button id="export-json">Export JSON</button><button id="export-markdown">Export Markdown</button><button id="workspace-delete" class="danger">Удалить расследование</button></div></div>
+      <label>Теги через запятую <input id="workspace-tags"></label>
+      <label>Заметки аналитика <textarea id="workspace-notes" rows="8"></textarea></label>
+      <h2>Прикреплённые объекты</h2><div id="workspace-items"></div>
+      <section id="compare-panel" hidden><h2>Event Compare</h2><p id="compare-summary"></p><div class="actions"><button id="copy-compare-json">Copy diff as JSON</button><button id="copy-compare-markdown">Copy diff as Markdown</button></div><div class="table-scroll"><table><thead><tr><th>Group</th><th>Field</th><th>Status</th><th>Event 1</th><th>Event 2</th><th id="compare-event-3">Event 3</th></tr></thead><tbody id="compare-body"></tbody></table></div></section>
+    </section>
+  </main>
+  <script src="workspace.js"></script>
+</body>
+</html>

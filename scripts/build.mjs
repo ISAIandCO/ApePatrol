@@ -24,6 +24,7 @@ await build({
     content: path.join(root, "src/content/main.js"),
     popup: path.join(root, "src/popup/popup.js"),
     "process-graph": path.join(root, "src/process-graph/process-graph.js"),
+    workspace: path.join(root, "src/workspace/workspace.js"),
     options: path.join(root, "src/options/options.js"),
   },
   bundle: true,
@@ -37,10 +38,11 @@ await build({
   minify: false,
 });
 
-for (const file of ["popup.html", "popup.css", "process-graph.html", "process-graph.css", "options.html", "options.css", "content.css"]) {
+for (const file of ["popup.html", "popup.css", "process-graph.html", "process-graph.css", "workspace.html", "workspace.css", "options.html", "options.css", "content.css"]) {
   await cp(path.join(root, "src/static", file), path.join(outDir, file));
 }
 await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
+await cp(path.join(root, "src", "managed-schema.json"), path.join(outDir, "managed-schema.json"));
 
 const manifestTemplate = await readFile(path.join(root, "src/manifest.firefox.json"), "utf8");
 const manifest = JSON.parse(manifestTemplate

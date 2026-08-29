@@ -9,7 +9,7 @@ const canvas = byId("process-canvas");
 const context = canvas.getContext("2d");
 const tooltip = byId("process-tooltip");
 const params = new URLSearchParams(location.search);
-const sourceTabId = Number(params.get("tabId"));
+let sourceTabId = Number(params.get("tabId"));
 const snapshotId = params.get("snapshotId");
 
 const state = {
@@ -39,6 +39,10 @@ const state = {
   snapshotCreatedAt: null,
   visibleNodeIds: new Set(),
   filters: { relations: "all", hideIsolated: false },
+  response: null,
+  activeRequestId: null,
+  nodeLimit: 1000,
+  sliderRange: { from: null, to: null },
 };
 
 function visibleNodes() { return state.nodes.filter((node) => state.visibleNodeIds.has(node.id)); }
@@ -416,7 +420,7 @@ function showTooltip(node, clientX, clientY) {
   const title = document.createElement("h2");
   title.textContent = node.label;
   const relations = document.createElement("p");
-  relations.textContent = `${node.connectionCount} связей · клик откроет событие в SIEM`;
+  relations.textContent = `${node.connectionCount} связей · клик откроет событие в SIEM · правый клик прикрепит процесс`;
   tooltip.append(title, relations);
   for (const item of node.details) tooltip.append(tooltipRow(item.label, item.value));
   tooltip.hidden = false;
@@ -425,6 +429,23 @@ function showTooltip(node, clientX, clientY) {
   const top = Math.min(innerHeight - tooltip.offsetHeight - margin, clientY + 16);
   tooltip.style.left = `${Math.max(margin, left)}px`;
   tooltip.style.top = `${Math.max(margin, top)}px`;
+}
+
+async function pinProcessNode(node) {
+  const response = await browser.runtime.sendMessage({
+    type: "workspace:item:add",
+    siemOrigin: state.origin,
+    sourceIncidentId: state.response?.sourceEvent?.incident_id ?? null,
+    item: {
+      type: "process",
+      value: String(node.event?.uuid ?? node.id),
+      label: node.label,
+      sourceEventUuid: node.event?.uuid ?? null,
+      snapshot: node.event,
+    },
+  });
+  if (!response?.ok) throw new Error(response?.error ?? "Не удалось прикрепить процесс");
+  setStatus(`Процесс прикреплён к «${response.workspace.title}»`);
 }
 
 async function openNodeEvent(node) {
@@ -517,6 +538,13 @@ canvas.addEventListener("wheel", (event) => {
   scheduleDraw();
 }, { passive: false });
 
+canvas.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  const position = pointerPosition(event);
+  const node = hitTest(position.x, position.y);
+  if (node) pinProcessNode(node).catch((error) => setStatus(error.message, true));
+});
+
 function updateLayoutButtons() {
   for (const layout of ["force", "timeline"]) {
     const button = byId(`layout-${layout}`);
@@ -538,6 +566,7 @@ function selectLayout(layout) {
 function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null } = {}) {
   const view = buildProcessGraphView(response.graph, response.sourceNodeId);
   state.graph = response.graph;
+  state.response = response;
   state.origin = response.origin;
   state.nodes = view.nodes;
   state.edges = view.edges;
@@ -545,6 +574,7 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
   updateVisibleNodes();
   state.stale = stale;
   state.snapshotCreatedAt = snapshotCreatedAt;
+  state.nodeLimit = Number(response.queryMetadata?.maxNodes) || state.nodeLimit;
   byId("loading").hidden = true;
   byId("empty").hidden = state.nodes.length > 0;
   canvas.hidden = state.nodes.length === 0;
@@ -555,7 +585,10 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
   const selected = state.nodes.some((node) => node.selected);
   const truncated = response.graph?.truncated ? " · достигнут лимит узлов" : "";
   const staleLabel = state.stale ? " · локальный снимок, источник SIEM недоступен" : "";
-  setStatus(`${state.nodes.length} процессов · ${state.edges.length} parent/child-связей${selected ? " · исходный процесс выделен" : " · исходный процесс не сопоставлен"}${truncated}${staleLabel}`);
+  const partialLabel = response.queryMetadata?.partial ? " · частичный граф" : "";
+  setStatus(`${state.nodes.length} процессов · ${state.edges.length} parent/child-связей${selected ? " · исходный процесс выделен" : " · исходный процесс не сопоставлен"}${truncated}${partialLabel}${staleLabel}`);
+  updateExpansionUi();
+  updateTimeSliders();
   seedLayout();
   if (state.layout === "force") startSimulation();
   requestAnimationFrame(fitGraph);
@@ -564,6 +597,101 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
 function markGraphStale(message = "Исходная вкладка SIEM закрыта; текущий локальный снимок продолжает работать") {
   state.stale = true;
   setStatus(message);
+  updateExpansionUi();
+}
+
+function updateExpansionUi() {
+  const loading = Boolean(state.activeRequestId);
+  const sourceAvailable = Number.isInteger(sourceTabId) && sourceTabId > 0 && !state.stale;
+  document.querySelectorAll("[data-expand]").forEach((button) => { button.disabled = loading || !sourceAvailable; });
+  byId("cancel-expand").disabled = !loading;
+  byId("reload-graph").disabled = loading || !sourceAvailable;
+  byId("reconnect-graph").hidden = sourceAvailable;
+  const limitReached = Boolean(state.response?.queryMetadata?.limitReached || state.graph?.truncated);
+  byId("continue-limit").hidden = !limitReached || state.nodeLimit >= 10_000 || !sourceAvailable;
+  byId("partial-indicator").hidden = !state.response?.queryMetadata?.partial;
+  const metadata = state.response?.queryMetadata;
+  byId("graph-range").textContent = metadata?.timeFrom && metadata?.timeTo
+    ? `${new Date(metadata.timeFrom).toLocaleString("ru-RU")} — ${new Date(metadata.timeTo).toLocaleString("ru-RU")}`
+    : "Диапазон не загружен";
+}
+
+async function persistCurrentSnapshot() {
+  if (!snapshotId || !state.response) return;
+  const saved = await browser.runtime.sendMessage({
+    type: "graph:snapshot:update",
+    id: snapshotId,
+    snapshot: { sourceTabId, sourceEvent: state.response.sourceEvent, response: state.response },
+  });
+  if (!saved?.ok) throw new Error(saved?.error ?? "Не удалось обновить снимок графа");
+}
+
+async function expandGraph(direction, { increaseLimit = false, resumeLimit = false } = {}) {
+  if (state.activeRequestId) return;
+  if (!Number.isInteger(sourceTabId) || sourceTabId <= 0 || state.stale) throw new Error("Сначала подключите доступную SIEM-вкладку");
+  const requestId = crypto.randomUUID();
+  state.activeRequestId = requestId;
+  if (increaseLimit) state.nodeLimit = Math.min(10_000, state.nodeLimit + Math.max(1000, Number(state.response?.queryMetadata?.pageSize) || 250));
+  updateExpansionUi();
+  byId("loading").hidden = false;
+  setStatus("Подгружаю дополнительный контекст процессов…");
+  try {
+    const response = await browser.tabs.sendMessage(sourceTabId, {
+      type: "siem:process:expand",
+      requestId,
+      direction,
+      resumeLimit,
+      stepSeconds: Number(byId("expand-step").value),
+      nodeLimit: state.nodeLimit,
+      sourceEvent: state.response.sourceEvent,
+      queryMetadata: state.response.queryMetadata,
+      existingEvents: state.graph.nodes.map((node) => node.event),
+    });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось расширить граф");
+    applyGraphResponse(response);
+    await persistCurrentSnapshot();
+  } finally {
+    state.activeRequestId = null;
+    byId("loading").hidden = true;
+    updateExpansionUi();
+  }
+}
+
+async function cancelExpansion() {
+  if (!state.activeRequestId || !Number.isInteger(sourceTabId)) return;
+  const requestId = state.activeRequestId;
+  await browser.tabs.sendMessage(sourceTabId, { type: "siem:process:cancel", requestId });
+  setStatus("Отмена запроса процессов запрошена");
+}
+
+async function reconnectGraph() {
+  if (!state.origin) throw new Error("В снимке отсутствует SIEM origin");
+  const tabs = await browser.tabs.query({ url: `${state.origin}/*` });
+  const candidate = tabs.find((tab) => tab.active) ?? tabs[0];
+  if (!candidate?.id) throw new Error(`Нет открытой вкладки ${state.origin}`);
+  const contextResponse = await browser.tabs.sendMessage(candidate.id, { type: "siem:get-context" });
+  if (!contextResponse?.ok || contextResponse.origin !== state.origin) throw new Error("Выбранная вкладка не отвечает как настроенный MP SIEM");
+  sourceTabId = candidate.id;
+  state.stale = false;
+  updateExpansionUi();
+  setStatus("Граф подключён к доступной SIEM-вкладке; можно продолжить подгрузку");
+}
+
+function sliderBounds() {
+  const times = state.nodes.map((node) => node.time).filter(Number.isFinite);
+  if (!times.length) return { from: null, to: null };
+  const minimum = Math.min(...times);
+  const maximum = Math.max(...times);
+  const start = Math.min(Number(byId("time-slider-start").value), Number(byId("time-slider-end").value));
+  const end = Math.max(Number(byId("time-slider-start").value), Number(byId("time-slider-end").value));
+  const span = maximum - minimum;
+  return { from: minimum + span * start / 100, to: minimum + span * end / 100 };
+}
+
+function updateTimeSliders() {
+  state.sliderRange = sliderBounds();
+  byId("time-slider-label").textContent = state.sliderRange.from === null ? ""
+    : `${new Date(state.sliderRange.from).toLocaleString("ru-RU")} — ${new Date(state.sliderRange.to).toLocaleString("ru-RU")}`;
 }
 
 async function loadSnapshot() {
@@ -594,6 +722,7 @@ async function reloadGraph() {
     const response = await browser.tabs.sendMessage(sourceTabId, { type: "siem:process" });
     if (!response?.ok) throw new Error(response?.error ?? "Расширение не получило данные процессов");
     applyGraphResponse(response);
+    await persistCurrentSnapshot();
     return true;
   } catch (error) {
     byId("loading").hidden = true;
@@ -620,6 +749,13 @@ byId("reload-graph").addEventListener("click", () => reloadGraph().catch((error)
   byId("loading").hidden = true;
   setStatus(error.message, true);
 }));
+byId("reconnect-graph").addEventListener("click", () => reconnectGraph().catch((error) => setStatus(error.message, true)));
+byId("open-workspace").addEventListener("click", () => browser.tabs.create({ url: browser.runtime.getURL("workspace.html") }));
+for (const button of document.querySelectorAll("[data-expand]")) {
+  button.addEventListener("click", () => expandGraph(button.dataset.expand).catch((error) => setStatus(error.message, true)));
+}
+byId("cancel-expand").addEventListener("click", () => cancelExpansion().catch((error) => setStatus(error.message, true)));
+byId("continue-limit").addEventListener("click", () => expandGraph(state.response?.queryMetadata?.lastDirection ?? "both", { increaseLimit: true, resumeLimit: true }).catch((error) => setStatus(error.message, true)));
 byId("process-search").addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
   scheduleDraw();
@@ -640,10 +776,17 @@ function readFilters() {
     eventType: byId("filter-event-type").value.trim(),
     relations: byId("filter-relations").value,
     hideIsolated: byId("filter-hide-isolated").checked,
-    timeFrom: timeValue("filter-time-from"),
-    timeTo: timeValue("filter-time-to"),
+    timeFrom: timeValue("filter-time-from") ?? state.sliderRange.from,
+    timeTo: timeValue("filter-time-to") ?? state.sliderRange.to,
   };
   updateVisibleNodes();
+}
+
+for (const id of ["time-slider-start", "time-slider-end"]) {
+  byId(id).addEventListener("input", () => {
+    updateTimeSliders();
+    readFilters();
+  });
 }
 
 for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) {
@@ -655,6 +798,9 @@ byId("filter-reset").addEventListener("click", () => {
   for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) byId(id).value = "";
   byId("filter-relations").value = "all";
   byId("filter-hide-isolated").checked = false;
+  byId("time-slider-start").value = "0";
+  byId("time-slider-end").value = "100";
+  updateTimeSliders();
   readFilters();
 });
 
@@ -664,6 +810,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
   if (tabId === sourceTabId && state.nodes.length) markGraphStale();
 });
 updateLayoutButtons();
+updateExpansionUi();
 resizeCanvas();
 initializeGraph().catch((error) => {
   byId("loading").hidden = true;

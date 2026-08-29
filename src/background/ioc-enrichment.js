@@ -9,6 +9,16 @@ export const IOC_API_PROVIDERS = Object.freeze({
   threatfox: { name: "ThreatFox", origin: "https://threatfox-api.abuse.ch/*", secret: "threatFoxApiKey", types: ["ip", "hash", "domain", "url"] },
 });
 
+export class ProviderError extends Error {
+  constructor(code, message, { status = null, retryAfterMs = null } = {}) {
+    super(message);
+    this.name = "ProviderError";
+    this.code = code;
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 function verdictFromStats(stats = {}) {
   if ((stats.malicious ?? 0) > 0) return "malicious";
   if ((stats.suspicious ?? 0) > 0) return "suspicious";
@@ -27,9 +37,20 @@ function safeDetail(text) {
   return /[<>]/.test(compact) ? "" : compact.slice(0, 300);
 }
 
-async function requestJson(url, options, fetchImpl) {
+function retryAfterMilliseconds(response) {
+  const value = response.headers?.get?.("retry-after");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+}
+
+async function requestJson(url, options, fetchImpl, signal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
+  const abort = () => controller.abort(signal.reason);
+  signal?.addEventListener("abort", abort, { once: true });
   try {
     const response = await fetchImpl(url, { ...options, signal: controller.signal });
     const text = await response.text();
@@ -39,20 +60,27 @@ async function requestJson(url, options, fetchImpl) {
         const body = JSON.parse(text);
         detail = safeDetail(body?.error?.message ?? body?.errors?.[0]?.detail ?? body?.message ?? detail);
       } catch { /* Plain response already handled. */ }
-      throw new Error(`${new URL(url).hostname} returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
+      const code = response.status === 429 ? "PROVIDER_RATE_LIMIT"
+        : [401, 403].includes(response.status) ? "PROVIDER_AUTH_FAILED"
+          : "PROVIDER_UNAVAILABLE";
+      throw new ProviderError(code, `${new URL(url).hostname} returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`, {
+        status: response.status,
+        retryAfterMs: retryAfterMilliseconds(response),
+      });
     }
     try { return JSON.parse(text); } catch { throw new Error(`${new URL(url).hostname} returned invalid JSON`); }
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 }
 
-async function virusTotal(ioc, key, fetchImpl) {
+async function virusTotal(ioc, key, fetchImpl, signal) {
   const resource = ioc.type === "hash" ? `files/${ioc.value}`
     : ioc.type === "ip" ? `ip_addresses/${ioc.value}`
       : ioc.type === "domain" ? `domains/${ioc.value}`
         : `urls/${base64Url(ioc.value)}`;
-  const body = await requestJson(`https://www.virustotal.com/api/v3/${resource}`, { headers: { "x-apikey": key, Accept: "application/json" } }, fetchImpl);
+  const body = await requestJson(`https://www.virustotal.com/api/v3/${resource}`, { headers: { "x-apikey": key, Accept: "application/json" } }, fetchImpl, signal);
   const attributes = body?.data?.attributes ?? {};
   const stats = attributes.last_analysis_stats ?? {};
   return {
@@ -63,11 +91,11 @@ async function virusTotal(ioc, key, fetchImpl) {
   };
 }
 
-async function abuseIpDb(ioc, key, fetchImpl) {
+async function abuseIpDb(ioc, key, fetchImpl, signal) {
   const url = new URL("https://api.abuseipdb.com/api/v2/check");
   url.searchParams.set("ipAddress", ioc.value);
   url.searchParams.set("maxAgeInDays", "90");
-  const body = await requestJson(url, { headers: { Key: key, Accept: "application/json" } }, fetchImpl);
+  const body = await requestJson(url, { headers: { Key: key, Accept: "application/json" } }, fetchImpl, signal);
   const data = body?.data ?? {};
   const score = Number(data.abuseConfidenceScore ?? 0);
   return {
@@ -78,11 +106,11 @@ async function abuseIpDb(ioc, key, fetchImpl) {
   };
 }
 
-async function openTip(ioc, key, fetchImpl) {
+async function openTip(ioc, key, fetchImpl, signal) {
   const endpoint = ioc.type === "hash" ? "hash" : ioc.type === "ip" ? "ip" : ioc.type === "domain" ? "domain" : "url";
   const url = new URL(`https://opentip.kaspersky.com/api/v1/search/${endpoint}`);
   url.searchParams.set("request", ioc.value);
-  const body = await requestJson(url, { headers: { "x-api-key": key, Accept: "application/json" } }, fetchImpl);
+  const body = await requestJson(url, { headers: { "x-api-key": key, Accept: "application/json" } }, fetchImpl, signal);
   const zone = String(body?.Zone ?? "Grey");
   const verdict = ["Red", "Orange"].includes(zone) ? "malicious" : zone === "Yellow" ? "suspicious" : "clean-or-unknown";
   const info = body.FileGeneralInfo ?? body.IpGeneralInfo ?? body.DomainGeneralInfo ?? body.UrlGeneralInfo ?? {};
@@ -94,7 +122,7 @@ async function openTip(ioc, key, fetchImpl) {
   };
 }
 
-async function threatFox(ioc, key, fetchImpl) {
+async function threatFox(ioc, key, fetchImpl, signal) {
   const isSupportedHash = ioc.type === "hash" && [32, 64].includes(ioc.value.length);
   const request = isSupportedHash
     ? { query: "search_hash", hash: ioc.value }
@@ -103,7 +131,7 @@ async function threatFox(ioc, key, fetchImpl) {
     method: "POST",
     headers: { "Auth-Key": key, Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(request),
-  }, fetchImpl);
+  }, fetchImpl, signal);
   const results = Array.isArray(body?.data) ? body.data : [];
   const top = results[0] ?? {};
   return {
@@ -114,7 +142,7 @@ async function threatFox(ioc, key, fetchImpl) {
   };
 }
 
-export async function lookupIoc(providerId, input, secrets, { fetchImpl = fetch } = {}) {
+export async function lookupIoc(providerId, input, secrets, { fetchImpl = fetch, signal } = {}) {
   const provider = IOC_API_PROVIDERS[providerId];
   if (!provider) throw new Error("Unknown IOC provider");
   const value = normalizeIoc(input?.type, input?.value);
@@ -124,9 +152,9 @@ export async function lookupIoc(providerId, input, secrets, { fetchImpl = fetch 
   const key = secrets[provider.secret];
   if (!key) throw new Error(`${provider.name} API key is not configured`);
   const ioc = { type: input.type, value };
-  const result = providerId === "virustotal" ? await virusTotal(ioc, key, fetchImpl)
-    : providerId === "abuseipdb" ? await abuseIpDb(ioc, key, fetchImpl)
-      : providerId === "opentip" ? await openTip(ioc, key, fetchImpl)
-        : await threatFox(ioc, key, fetchImpl);
+  const result = providerId === "virustotal" ? await virusTotal(ioc, key, fetchImpl, signal)
+    : providerId === "abuseipdb" ? await abuseIpDb(ioc, key, fetchImpl, signal)
+      : providerId === "opentip" ? await openTip(ioc, key, fetchImpl, signal)
+        : await threatFox(ioc, key, fetchImpl, signal);
   return { ...result, type: ioc.type, value: ioc.value };
 }

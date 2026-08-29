@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "type": "object",
+  "properties": {
+    "settingsProfile": {
+      "type": "string",
+      "title": "ApePatrol managed settings policy as JSON",
+      "description": "JSON object with schemaVersion, defaults and lockedPaths. API keys are not supported."
+    }
+  }
+}

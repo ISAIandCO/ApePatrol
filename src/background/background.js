@@ -1,13 +1,23 @@
-import { loadSecrets, loadSettings, saveSecrets, saveSettings } from "../shared/storage.js";
+import { loadSecrets, loadSettings, loadSettingsState, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
 import { proxySiemApiRequest } from "./siem-proxy.js";
 import { IOC_API_PROVIDERS, lookupIoc } from "./ioc-enrichment.js";
 import { setIocDescription } from "./ioc-description.js";
 import { applyTableListMutation } from "./table-list.js";
-import { deleteGraphSnapshot, getGraphSnapshot, saveGraphSnapshot } from "./graph-snapshots.js";
+import { deleteGraphSnapshot, getGraphSnapshot, saveGraphSnapshot, updateGraphSnapshot } from "./graph-snapshots.js";
 import { prepareAiRequest } from "../shared/ai-payload.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
+import { cancelIocBatch, runIocBatch } from "./ioc-batch.js";
+import {
+  createInvestigation,
+  deleteWorkspace,
+  getWorkspace,
+  listWorkspaces,
+  pinWorkspaceItem,
+  removeWorkspaceItem,
+  updateWorkspace,
+} from "./workspaces.js";
 
 const CONTENT_PREFIX = "apepatrol-content-";
 const LEGACY_BRIDGE_PREFIX = "apepatrol-bridge-";
@@ -93,12 +103,15 @@ browser.runtime.onInstalled.addListener(() => refreshRegistrations().catch(conso
 browser.runtime.onStartup.addListener(() => refreshRegistrations().catch(console.error));
 browser.permissions.onAdded.addListener(() => refreshRegistrations().catch(console.error));
 browser.permissions.onRemoved.addListener(() => refreshRegistrations().catch(console.error));
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area === "managed" && Object.keys(changes).length) refreshRegistrations().catch(console.error);
+});
 
 browser.runtime.onMessage.addListener(async (message, sender) => {
   try {
     switch (message?.type) {
       case "settings:get":
-        return { ok: true, settings: await loadSettings() };
+        return { ok: true, ...(await loadSettingsState()) };
       case "settings:save":
         assertExtensionPage(sender);
         return { ok: true, settings: await saveSettings(message.settings), registrations: await refreshRegistrations() };
@@ -126,6 +139,9 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
       case "graph:snapshot:get":
         assertExtensionPage(sender);
         return { ok: true, snapshot: await getGraphSnapshot(message.id) };
+      case "graph:snapshot:update":
+        assertExtensionPage(sender);
+        return { ok: true, snapshot: await updateGraphSnapshot(message.id, message.snapshot) };
       case "graph:snapshot:delete":
         assertExtensionPage(sender);
         return { ok: true, deleted: await deleteGraphSnapshot(message.id) };
@@ -149,6 +165,14 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         if (!await browser.permissions.contains({ origins: [provider.origin] })) throw new Error(`Доступ к API ${provider.name} не выдан — откройте настройки ApePatrol`);
         return { ok: true, result: await lookupIoc(message.provider, message.ioc, await loadSecrets()) };
       }
+      case "enrichment:batch:start": {
+        assertExtensionPage(sender);
+        if (!await hasDataPermission(["websiteContent", "authenticationInfo"])) throw new Error("Разрешение Firefox на передачу IOC и API-ключей не выдано");
+        return { ok: true, batch: await runIocBatch(message) };
+      }
+      case "enrichment:batch:cancel":
+        assertExtensionPage(sender);
+        return { ok: true, cancelled: cancelIocBatch(message.requestId) };
       case "enrichment:llm":
         assertExtensionPage(sender);
         return { ok: true, result: await llmRequest(message) };
@@ -159,6 +183,31 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
         if (!endpoint || !settings.ai.model) throw new Error("AI endpoint or model is not configured");
         return { ok: true, endpoint: endpoint.origin, preview: await prepareAiRequest(message.event, settings.ai, { selectedFields: message.selectedFields }) };
+      }
+      case "workspace:list":
+        assertExtensionPage(sender);
+        return { ok: true, workspaces: await listWorkspaces() };
+      case "workspace:get":
+        assertExtensionPage(sender);
+        return { ok: true, workspace: await getWorkspace(message.id) };
+      case "workspace:create":
+        assertExtensionPage(sender);
+        return { ok: true, workspace: await createInvestigation(message.workspace) };
+      case "workspace:update":
+        assertExtensionPage(sender);
+        return { ok: true, workspace: await updateWorkspace(message.id, message.patch) };
+      case "workspace:delete":
+        assertExtensionPage(sender);
+        return { ok: true, deleted: await deleteWorkspace(message.id) };
+      case "workspace:item:remove":
+        assertExtensionPage(sender);
+        return { ok: true, workspace: await removeWorkspaceItem(message.id, message.index) };
+      case "workspace:item:add": {
+        const extensionSender = isExtensionPageSender(sender, browser.runtime.getURL("/"));
+        const siemSender = !extensionSender && await senderIsConfiguredSiem(sender);
+        if (!extensionSender && !siemSender) throw new Error("Workspace pin is restricted to ApePatrol and configured SIEM pages");
+        const siemOrigin = siemSender ? normalizeOrigin(new URL(sender.tab.url).origin) : normalizeOrigin(message.siemOrigin);
+        return { ok: true, workspace: await pinWorkspaceItem({ ...message, siemOrigin }) };
       }
       case "content:ready":
         if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");

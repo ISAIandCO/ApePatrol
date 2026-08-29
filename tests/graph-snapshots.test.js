@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getGraphSnapshot, saveGraphSnapshot } from "../src/background/graph-snapshots.js";
+import { getGraphSnapshot, saveGraphSnapshot, updateGraphSnapshot } from "../src/background/graph-snapshots.js";
 
 function memoryStorage() {
   const data = {};
@@ -52,5 +52,18 @@ describe("autonomous process graph snapshots", () => {
     const storage = memoryStorage();
     for (let index = 0; index < 12; index += 1) await saveGraphSnapshot(snapshot(index), storage);
     expect(Object.keys(storage.data)).toHaveLength(10);
+  });
+
+  it("updates an expanded graph while preserving snapshot identity", async () => {
+    const storage = memoryStorage();
+    const saved = await saveGraphSnapshot(snapshot(1), storage);
+    const expanded = snapshot(2);
+    expanded.response.graph.nodes.push({ id: "node-2", parentId: "node-1", children: [], event: { uuid: "event-2" } });
+    await updateGraphSnapshot(saved.id, expanded, storage);
+    const restored = await getGraphSnapshot(saved.id, storage);
+    expect(restored.id).toBe(saved.id);
+    expect(restored.createdAt).toBe(saved.createdAt);
+    expect(restored.response.graph.nodes).toHaveLength(2);
+    expect(restored.updatedAt).toEqual(expect.any(Number));
   });
 });

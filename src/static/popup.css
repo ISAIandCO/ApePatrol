@@ -25,3 +25,12 @@ textarea, select { width: 100%; margin: 6px 0; padding: 6px; } .danger { border-
 #ai-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; max-height: 180px; overflow: auto; margin: 8px 0; }
 #ai-fields label { overflow-wrap: anywhere; }
 #ai-preview-meta { white-space: pre-wrap; }
+.choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; max-height: 150px; overflow: auto; margin: 7px 0 12px; }
+.choice-list label { overflow-wrap: anywhere; }
+#batch-preview-output, #batch-results { max-height: 260px; overflow: auto; margin-top: 8px; }
+#batch-preview-output table, #batch-results table { width: 100%; border-collapse: collapse; font-size: 11px; }
+#batch-preview-output th, #batch-preview-output td, #batch-results th, #batch-results td { padding: 5px; border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.batch-ok { color: #24753b; }.batch-error { color: #b62929; }.batch-cached { color: #665cc7; }
+#workspace-actions, #rule-intelligence { margin-top: 14px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent); }
+.rule-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; }
+.rule-grid dt { opacity: .65; }.rule-grid dd { margin: 0; overflow-wrap: anywhere; }

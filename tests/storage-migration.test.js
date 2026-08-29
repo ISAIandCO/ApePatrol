@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadSecrets, loadSettings } from "../src/shared/storage.js";
+import { loadSecrets, loadSettings, MANAGED_OVERRIDE_PATHS_KEY, saveSettings } from "../src/shared/storage.js";
 import {
   LEGACY_LOCAL_SECRETS_KEY,
   LEGACY_SYNC_STORAGE_KEY,
   LOCAL_SECRETS_KEY,
   SYNC_STORAGE_KEY,
+  DEFAULT_SETTINGS,
 } from "../src/shared/settings.js";
 
 describe("ApePatrol storage migration", () => {
@@ -45,5 +46,19 @@ describe("ApePatrol storage migration", () => {
     expect(browser.storage.local.set).toHaveBeenCalledWith({ [LOCAL_SECRETS_KEY]: migrated });
     expect(browser.storage.local.remove).toHaveBeenCalledWith(LEGACY_LOCAL_SECRETS_KEY);
     expect(browser.storage.sync.set).not.toHaveBeenCalled();
+  });
+
+  it("persists user settings underneath a managed lock", async () => {
+    const stored = { ...structuredClone(DEFAULT_SETTINGS), debugLogging: false };
+    browser.storage.managed = { get: vi.fn().mockResolvedValue({
+      settingsProfile: JSON.stringify({ defaults: { features: { batchIoc: false } }, lockedPaths: ["features.batchIoc"] }),
+    }) };
+    browser.storage.sync.get.mockResolvedValue({ [SYNC_STORAGE_KEY]: stored, [MANAGED_OVERRIDE_PATHS_KEY]: [] });
+    const saved = await saveSettings({ ...stored, features: { ...stored.features, batchIoc: false }, debugLogging: true });
+    expect(saved).toMatchObject({ features: { batchIoc: false }, debugLogging: true });
+    expect(browser.storage.sync.set).toHaveBeenCalledWith(expect.objectContaining({
+      [SYNC_STORAGE_KEY]: expect.objectContaining({ features: expect.objectContaining({ batchIoc: true }), debugLogging: true }),
+      [MANAGED_OVERRIDE_PATHS_KEY]: [],
+    }));
   });
 });

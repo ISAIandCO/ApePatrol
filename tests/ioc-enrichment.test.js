@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { lookupIoc } from "../src/background/ioc-enrichment.js";
 
-const response = (body, status = 200) => ({
+const response = (body, status = 200, headers = {}) => ({
   ok: status >= 200 && status < 300,
   status,
+  headers: { get: (name) => headers[String(name).toLowerCase()] ?? null },
   text: async () => JSON.stringify(body),
 });
 
@@ -41,5 +42,11 @@ describe("IOC API enrichment", () => {
     const result = await lookupIoc("threatfox", { type: "domain", value: "evil.example" }, { threatFoxApiKey: "key" }, { fetchImpl });
     expect(result.verdict).toBe("malicious");
     expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({ query: "search_ioc", search_term: "evil.example" });
+  });
+
+  it("classifies provider throttling and preserves Retry-After", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ message: "slow down" }, 429, { "retry-after": "2" }));
+    await expect(lookupIoc("virustotal", { type: "domain", value: "example.com" }, { virusTotalApiKey: "key" }, { fetchImpl }))
+      .rejects.toMatchObject({ code: "PROVIDER_RATE_LIMIT", status: 429, retryAfterMs: 2000 });
   });
 });

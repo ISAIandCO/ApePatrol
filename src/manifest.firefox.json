@@ -28,6 +28,9 @@
     "tabs",
     "downloads"
   ],
+  "storage": {
+    "managed_schema": "managed-schema.json"
+  },
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
