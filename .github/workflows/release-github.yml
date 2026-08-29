@@ -23,6 +23,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:self-hosted
+      - name: Verify checkout is the requested workflow commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Read version
         id: meta
         shell: bash

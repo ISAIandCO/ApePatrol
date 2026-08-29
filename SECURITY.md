@@ -2,18 +2,19 @@
 
 ## Threat model
 
-SIEM page JavaScript, event fields, настройки, provider responses и LLM output считаются недоверенными. MAIN world не получает полный settings object, API keys, bearer tokens или SIEM credentials.
+SIEM page JavaScript, event fields, настройки, provider responses и LLM output считаются недоверенными. Content bundle работает в `ISOLATED` world; page world не получает settings, API keys, bearer tokens или SIEM credentials.
 
 ## Границы
 
 - нет постоянных host permissions и static content scripts;
 - ISOLATED world содержит DOM/API orchestration;
-- MAIN bridge регистрируется только на разрешённом origin и лишь для IOC description;
-- bridge проверяет endpoint, payload, длины и TTL, хранит одноразовое state и умеет unpatch;
+- нет MAIN-world scripts, `window.postMessage` channel и патчей `window.fetch`/`XMLHttpRequest.prototype`;
+- IOC description и Table List mutations используют отдельные runtime actions; background проверяет configured origin, feature, method/path, token, row, размер тела и redirect;
 - разрешены только `http:`/`https:` URL без embedded credentials;
 - PDQL строится централизованным builder с escaping;
 - secrets находятся в `storage.local`, внешний fetch выполняет background page;
-- debug log редактирует secret-like keys и не содержит full event JSON.
+- debug log имеет level/module/operation и редактирует secret-like keys, request body и full event payload;
+- AI отправка повторно строит payload и сравнивает SHA-256 с показанным preview; full/redaction режимы не объявляются DLP.
 
 ## Disclosure
 

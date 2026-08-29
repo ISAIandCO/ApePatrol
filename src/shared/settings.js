@@ -5,6 +5,12 @@ export const SYNC_STORAGE_KEY = "apePatrolSettings";
 export const LOCAL_SECRETS_KEY = "apePatrolSecrets";
 export const LEGACY_SYNC_STORAGE_KEY = "siemMonkeySettings";
 export const LEGACY_LOCAL_SECRETS_KEY = "siemMonkeySecrets";
+export const DEFAULT_AI_SELECTED_FIELDS = Object.freeze([
+  "uuid", "time", "msgid", "event_src.host", "correlation_name", "incident_id",
+  "src.ip", "src.port", "dst.ip", "dst.port", "subject.account.name", "object.account.name",
+  "object.process.name", "object.process.path", "object.process.cmdline", "object.process.guid",
+  "object.process.parent.name", "object.process.parent.guid", "object.hash",
+]);
 
 export const BUILTIN_PROVIDERS = Object.freeze([
   { id: "virustotal-ip", name: "VirusTotal — IP", type: "ip", urlTemplate: "https://www.virustotal.com/gui/ip-address/${ip}/details", enabled: true },
@@ -22,7 +28,7 @@ export const BUILTIN_PROVIDERS = Object.freeze([
 ]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  schemaVersion: 4,
+  schemaVersion: 5,
   instances: [],
   features: {
     eventActions: true,
@@ -35,7 +41,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     aiAssistant: false,
   },
   iocListName: "IOCs_Value",
-  process: { maxNodes: 1000, maxDepth: 64, maxConcurrentRequests: 4 },
+  process: { maxNodes: 1000, maxDepth: 64 },
   searchScope: { mode: "default", searchSources: [], localSources: [], groupIds: [] },
   externalProviders: BUILTIN_PROVIDERS,
   customFilters: BUILTIN_FILTERS,
@@ -48,7 +54,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   ai: {
     endpoint: "",
     model: "",
-    mode: "redacted",
+    mode: "selected",
+    selectedFields: DEFAULT_AI_SELECTED_FIELDS,
     allowFields: [],
     denyFields: ["password", "token", "cookie", "authorization", "api_key", "secret", "body", "text"],
     maxBytes: 64000,
@@ -88,9 +95,8 @@ export function normalizeSettings(input) {
   const process = {
     maxNodes: boundedInteger(input.process?.maxNodes, defaults.process.maxNodes, 1, 10000),
     maxDepth: boundedInteger(input.process?.maxDepth, defaults.process.maxDepth, 1, 256),
-    maxConcurrentRequests: boundedInteger(input.process?.maxConcurrentRequests, defaults.process.maxConcurrentRequests, 1, 16),
   };
-  const aiMode = ["selected", "redacted", "full"].includes(input.ai?.mode) ? input.ai.mode : defaults.ai.mode;
+  const aiMode = ["selected", "allowlist", "redacted", "full"].includes(input.ai?.mode) ? input.ai.mode : defaults.ai.mode;
   const inputProviders = Array.isArray(input.externalProviders) ? input.externalProviders.map(normalizeProvider).filter(Boolean) : [];
   const providerById = new Map(inputProviders.map((provider) => [provider.id, provider]));
   const builtinProviderIds = new Set(BUILTIN_PROVIDERS.map((provider) => provider.id));
@@ -108,7 +114,7 @@ export function normalizeSettings(input) {
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    schemaVersion: 4,
+    schemaVersion: 5,
     instances,
     features,
     iocListName: String(input.iocListName || defaults.iocListName).slice(0, 120),
@@ -126,6 +132,11 @@ export function normalizeSettings(input) {
       endpoint: parseSafeExternalUrl(input.ai?.endpoint)?.href ?? "",
       model: String(input.ai?.model || "").slice(0, 120),
       mode: aiMode,
+      selectedFields: Array.isArray(input.ai?.selectedFields)
+        ? input.ai.selectedFields.map(String)
+        : Number(input.schemaVersion ?? 0) < 5 && input.ai?.mode === "selected" && Array.isArray(input.ai?.allowFields)
+          ? input.ai.allowFields.map(String)
+          : defaults.ai.selectedFields,
       allowFields: Array.isArray(input.ai?.allowFields) ? input.ai.allowFields.map(String) : [],
       denyFields: Array.isArray(input.ai?.denyFields) ? input.ai.denyFields.map(String) : defaults.ai.denyFields,
       maxBytes: boundedInteger(input.ai?.maxBytes, defaults.ai.maxBytes, 1024, 200000),

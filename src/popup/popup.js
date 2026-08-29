@@ -3,8 +3,10 @@ import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
+import { loadOptionalPopupFeatures } from "./feature-loader.js";
+import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 
-const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null };
+const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null, aiPreviewHash: null };
 const byId = (id) => document.getElementById(id);
 const setStatus = (message) => { byId("status").textContent = message; };
 const showError = (target, error) => { setSafeText(target, error?.message ?? String(error)); };
@@ -13,7 +15,11 @@ async function sendToContent(message) {
   if (!state.tab?.id) throw new Error("No active tab");
   try {
     const response = await browser.tabs.sendMessage(state.tab.id, message);
-    if (!response?.ok) throw new Error(response?.error ?? "Feature unavailable on this page");
+    if (!response?.ok) {
+      const responseError = new Error(response?.error ?? "Feature unavailable on this page");
+      responseError.code = response?.errorCode;
+      throw responseError;
+    }
     return response;
   } catch (error) {
     throw new Error(error.message.includes("Receiving end") ? "Open a configured MaxPatrol SIEM event page" : error.message);
@@ -25,6 +31,54 @@ function switchPanel(id) {
   document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.dataset.panel === id));
 }
 
+function setPanelAvailability(id, available) {
+  const panel = byId(id);
+  const button = document.querySelector(`nav button[data-panel='${id}']`);
+  if (panel) panel.hidden = !available;
+  if (button) button.hidden = !available;
+  if (!available && panel?.classList.contains("active")) switchPanel("event");
+}
+
+function applyFeatureVisibility() {
+  const features = state.settings.features;
+  setPanelAvailability("process", features.processTree);
+  setPanelAvailability("related", features.relatedEvents);
+  setPanelAvailability("incidents", features.incidentContext);
+  setPanelAvailability("ai", features.aiAssistant);
+  byId("table-list-tools").hidden = !features.tableListTools;
+}
+
+function selectedAiFields() {
+  return [...document.querySelectorAll("#ai-fields input:checked")].map((input) => input.value);
+}
+
+function invalidateAiPreview() {
+  state.aiPreviewHash = null;
+  byId("ai-run").disabled = true;
+  byId("ai-preview").textContent = "";
+  byId("ai-preview-meta").textContent = "";
+}
+
+function renderAiFieldPicker() {
+  const picker = byId("ai-field-picker");
+  const fields = byId("ai-fields");
+  fields.replaceChildren();
+  const selectedMode = state.settings.ai.mode === "selected";
+  picker.hidden = !selectedMode;
+  if (!selectedMode) return;
+  const defaults = new Set(state.settings.ai.selectedFields);
+  for (const field of Object.keys(state.context?.event ?? {}).sort()) {
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = field;
+    checkbox.checked = defaults.has(field);
+    checkbox.addEventListener("change", invalidateAiPreview);
+    label.append(checkbox, document.createTextNode(` ${field}`));
+    fields.append(label);
+  }
+}
+
 function renderEvent() {
   byId("event-json").textContent = JSON.stringify(state.context?.event ?? {}, null, 2);
   const found = Object.keys(state.context?.event ?? {}).length;
@@ -34,12 +88,16 @@ function renderEvent() {
       ? "MP SIEM detected · event card is closed or still loading"
       : "Configured origin reached · MP SIEM UI not detected");
   const incidentId = state.context?.event?.incident_id;
-  byId("incident-output").textContent = incidentId
-    ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
-    : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
+  if (state.settings.features.incidentContext) {
+    byId("incident-output").textContent = incidentId
+      ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
+      : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
+  }
   const ai = state.settings.ai;
-  byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. Fields currently visible: ${Object.keys(state.context?.event ?? {}).join(", ") || "none"}. Nothing is sent until you click below and confirm.`;
-  byId("ai-run").disabled = !state.settings.features.aiAssistant || !ai.endpoint;
+  byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. ApePatrol will show the exact final request body before transmission; warnings are not a DLP guarantee.`;
+  byId("ai-preview-button").disabled = !state.settings.features.aiAssistant || !ai.endpoint || !ai.model;
+  invalidateAiPreview();
+  renderAiFieldPicker();
   renderCustomFilters();
 }
 
@@ -91,8 +149,20 @@ function renderRelated() {
 
 async function openProcessGraph(layout) {
   if (!state.tab?.id) throw new Error("No active SIEM tab");
-  const search = new URLSearchParams({ tabId: String(state.tab.id), layout });
+  byId("process-output").textContent = "Получаю процессы и создаю автономный снимок…";
+  const response = await sendToContent({ type: "siem:process" });
+  const saved = await browser.runtime.sendMessage({
+    type: "graph:snapshot:save",
+    snapshot: {
+      sourceTabId: state.tab.id,
+      sourceEvent: state.context.event,
+      response,
+    },
+  });
+  if (!saved?.ok) throw new Error(saved?.error ?? "Не удалось сохранить снимок графа");
+  const search = new URLSearchParams({ tabId: String(state.tab.id), snapshotId: saved.snapshot.id, layout });
   await browser.tabs.create({ url: browser.runtime.getURL(`process-graph.html?${search}`) });
+  byId("process-output").textContent = "Граф открыт в автономной вкладке. Снимок останется доступен после закрытия исходной вкладки SIEM.";
 }
 
 async function downloadEvent() {
@@ -139,16 +209,26 @@ async function applyTableOperation(operation) {
 async function initialize() {
   [state.tab] = await browser.tabs.query({ active: true, currentWindow: true });
   const settingsResponse = await browser.runtime.sendMessage({ type: "settings:get" });
+  if (!settingsResponse?.ok) throw new Error(settingsResponse?.error ?? "ApePatrol settings are unavailable");
   state.settings = settingsResponse.settings;
   state.context = await sendToContent({ type: "siem:get-context" });
+  applyFeatureVisibility();
   renderEvent();
-  const related = await sendToContent({ type: "siem:related" });
-  state.related = related.actions;
-  renderRelated();
-  if (state.context.event.correlation_name) {
-    const ruleContext = await sendToContent({ type: "siem:rule-context" });
-    state.knowledgeBaseUrl = ruleContext.knowledgeBaseUrl;
+  const optional = await loadOptionalPopupFeatures({ settings: state.settings, context: state.context, request: sendToContent });
+  if (optional.related?.ok) {
+    state.related = optional.related.value.actions;
+    renderRelated();
+  } else if (optional.related) {
+    showError(byId("related-output"), optional.related.error);
+  } else if (state.settings.features.relatedEvents) {
+    renderRelated();
+  }
+  if (optional.rule?.ok) {
+    state.knowledgeBaseUrl = optional.rule.value.knowledgeBaseUrl;
     byId("open-rule").disabled = !state.knowledgeBaseUrl;
+  } else if (optional.rule) {
+    byId("open-rule").disabled = true;
+    byId("open-rule").title = optional.rule.error?.message ?? "Rule context is unavailable";
   }
 }
 
@@ -173,12 +253,48 @@ byId("open-filter").addEventListener("click", () => {
 });
 byId("table-add").addEventListener("click", () => applyTableOperation("add").catch((error) => showError(byId("tools-output"), error)));
 byId("table-remove").addEventListener("click", () => applyTableOperation("remove").catch((error) => showError(byId("tools-output"), error)));
+byId("ai-preview-button").addEventListener("click", async () => {
+  byId("ai-preview-meta").textContent = "Формирую payload локально…";
+  try {
+    const response = await browser.runtime.sendMessage({ type: "ai:preview", event: state.context.event, selectedFields: selectedAiFields() });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось сформировать AI payload");
+    state.aiPreviewHash = response.preview.hash;
+    byId("ai-preview").textContent = response.preview.serialized;
+    const warnings = response.preview.warnings.length ? `\nПредупреждения:\n- ${response.preview.warnings.join("\n- ")}` : "\nЭвристических предупреждений нет; это не означает, что payload безопасен.";
+    byId("ai-preview-meta").textContent = `${response.preview.byteLength} UTF-8 bytes · ${response.preview.sentFields.length} fields · destination ${response.endpoint}${warnings}`;
+    byId("ai-run").disabled = false;
+  } catch (error) {
+    invalidateAiPreview();
+    showError(byId("ai-preview"), error);
+    byId("ai-preview-meta").textContent = "";
+  }
+});
 byId("ai-run").addEventListener("click", async () => {
   const ai = state.settings.ai;
-  if (!confirm(`Send the ${ai.mode} event to ${ai.endpoint}?`)) return;
+  if (!state.aiPreviewHash) return;
+  const warning = ai.mode === "full" ? "Full mode отправит все нормализованные поля. " : "";
+  if (!confirm(`${warning}Отправить в ${ai.endpoint} ровно показанный выше payload?`)) return;
   byId("ai-output").textContent = "Waiting for the configured endpoint…";
-  const response = await browser.runtime.sendMessage({ type: "enrichment:llm", event: state.context.event, confirmed: true });
-  setSafeText(byId("ai-output"), response.ok ? response.result.content : response.error);
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "enrichment:llm",
+      event: state.context.event,
+      selectedFields: selectedAiFields(),
+      previewHash: state.aiPreviewHash,
+      confirmed: true,
+    });
+    if (!response?.ok) throw new Error(response?.error ?? "AI endpoint request failed");
+    setSafeText(byId("ai-output"), response.result.content);
+  } catch (error) {
+    showError(byId("ai-output"), error);
+  }
+});
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes[SYNC_STORAGE_KEY] || !state.settings || !state.context) return;
+  state.settings = normalizeSettings(changes[SYNC_STORAGE_KEY].newValue);
+  applyFeatureVisibility();
+  renderEvent();
 });
 
 initialize().catch((error) => {

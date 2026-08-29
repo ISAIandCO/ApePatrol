@@ -1,4 +1,5 @@
 import { createLogger } from "../shared/logger.js";
+import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 import { aroundTime } from "../shared/time.js";
 import { SiemApiClient } from "../siem/api/client.js";
 import { detectCapabilities } from "../siem/api/capabilities.js";
@@ -14,6 +15,8 @@ import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
 import { createSiemBackgroundFetch } from "./siem-transport.js";
+import { domSettingsFingerprint, settingsImpact } from "./settings-runtime.js";
+import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
@@ -27,10 +30,10 @@ const PROCESS_FIELDS = [
 async function initialize() {
   const response = await browser.runtime.sendMessage({ type: "settings:get" });
   if (!response?.ok || !response.settings.instances.includes(location.origin)) return;
-  const settings = response.settings;
-  const logger = createLogger(settings.debugLogging);
+  let settings = normalizeSettings(response.settings);
+  let logger = createLogger(settings.debugLogging, { module: "content" });
+  let active = true;
   await browser.runtime.sendMessage({ type: "content:ready" });
-  window.postMessage({ source: "apepatrol", type: "bridge-config", iocDescription: settings.features.addIocDescription }, location.origin);
 
   const adapter = new SiemDomAdapter();
   const client = new SiemApiClient(location.origin, {
@@ -39,14 +42,22 @@ async function initialize() {
     timeout: 30000,
   });
   const tableTools = new TableListTools(client);
-  const features = [
-    new EventFieldActions(settings),
-    new FieldAliasesFeature(settings.fieldAliases),
-    new EdrUiFeature(settings.features.disableEdrIntegration),
-    new IocDescriptionFeature(client, settings, logger),
-  ];
-  const controller = new SiemDomController(adapter, features);
-  controller.start();
+  let controller = null;
+  let domFingerprint = null;
+  const mountDomFeatures = () => {
+    const nextFingerprint = domSettingsFingerprint(settings);
+    if (controller && nextFingerprint === domFingerprint) return;
+    controller?.stop();
+    controller = new SiemDomController(adapter, [
+      new EventFieldActions(settings),
+      new FieldAliasesFeature(settings.fieldAliases),
+      new EdrUiFeature(settings.features.disableEdrIntegration),
+      new IocDescriptionFeature(client, settings, logger),
+    ]);
+    domFingerprint = nextFingerprint;
+    controller.start();
+  };
+  mountDomFeatures();
   const capabilitiesPromise = detectCapabilities(client).catch((error) => {
     logger.debug("Capability detection failed", { kind: error.kind });
     return {};
@@ -54,6 +65,9 @@ async function initialize() {
 
   browser.runtime.onMessage.addListener(async (message) => {
     try {
+      if (!active && message?.type?.startsWith("siem:")) {
+        return { ok: false, error: "This SIEM origin is no longer configured", kind: "feature-unavailable" };
+      }
       const event = adapter.extractEvent();
       switch (message?.type) {
         case "siem:get-context":
@@ -75,13 +89,20 @@ async function initialize() {
         case "siem:table-preview":
           return { ok: true, preview: tableTools.preview(message.operation, message.table, message.row) };
         case "siem:table-apply":
-          return { ok: true, result: await tableTools.apply(message.preview, { confirmed: message.confirmed === true }) };
+          if (!settings.features.tableListTools) return { ok: false, error: "Table List tools are disabled", kind: "feature-unavailable" };
+          return browser.runtime.sendMessage({
+            type: "siem:table-list:apply",
+            operation: message.preview?.operation,
+            token: message.preview?.token,
+            row: message.preview?.row,
+            confirmed: message.confirmed === true,
+          });
         case "siem:asset": {
           const capabilities = await capabilitiesPromise;
           const asset = await getAssetContext(client, {
             assetId: event["asset.id"] ?? event["event_src.asset.id"] ?? event["src.asset.id"] ?? event["dst.asset.id"],
             assetName: event["event_src.asset"] ?? event["src.asset"] ?? event["dst.asset"] ?? event["event_src.host"],
-            includeEdr: capabilities.edr === true,
+            includeEdr: capabilities.edr === true && !settings.features.disableEdrIntegration,
           });
           return { ok: true, asset };
         }
@@ -97,8 +118,28 @@ async function initialize() {
           return undefined;
       }
     } catch (error) {
-      return { ok: false, error: error.message, kind: error.kind ?? "feature-unavailable" };
+      const normalized = normalizeError(error, ERROR_CODES.SIEM_API_ERROR);
+      return { ok: false, error: normalized.message, errorCode: normalized.code, kind: error.kind ?? "feature-unavailable" };
     }
+  });
+
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync" || !changes[SYNC_STORAGE_KEY]) return;
+    Promise.resolve().then(() => {
+      const next = normalizeSettings(changes[SYNC_STORAGE_KEY].newValue);
+      const impact = settingsImpact(settings, next, location.origin);
+      settings = next;
+      active = impact.active;
+      logger = createLogger(settings.debugLogging, { module: "content" });
+      if (!active) {
+        controller?.stop();
+        controller = null;
+        domFingerprint = null;
+        return;
+      }
+      if (impact.clearApiCache) client.clearCache();
+      if (impact.rebuildDom) mountDomFeatures();
+    }).catch((error) => console.warn(`[ApePatrol] live settings update failed: ${error.message}`));
   });
 }
 
@@ -130,8 +171,16 @@ async function buildProcessContext(client, event, settings) {
     ok: true,
     graph,
     origin: client.origin,
+    sourceEvent: event,
     sourceUuid: event.uuid ?? null,
     sourceNodeId: findSourceProcessNodeId(graph, event),
+    queryMetadata: {
+      where,
+      timeFrom: range.timeFrom,
+      timeTo: range.timeTo,
+      maxNodes: settings.process.maxNodes,
+      searchScope: settings.searchScope.mode,
+    },
   };
 }
 

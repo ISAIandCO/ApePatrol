@@ -25,7 +25,6 @@ await build({
     popup: path.join(root, "src/popup/popup.js"),
     "process-graph": path.join(root, "src/process-graph/process-graph.js"),
     options: path.join(root, "src/options/options.js"),
-    "network-interceptor": path.join(root, "src/page-bridge/network-interceptor.js"),
   },
   bundle: true,
   entryNames: "[name]",

@@ -124,6 +124,7 @@ describe("MP SIEM DOM adapter fixtures", () => {
   });
   it("mounts IOC description only after resolving the configured list", async () => {
     document.body.innerHTML = await fixture("table-list");
+    globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, result: {} }) } };
     const client = {
       getTableLists: async () => [{ name: "IOCs_Value", token: "list-token" }],
       getCurrentUser: async () => ({ login: "analyst" }),
@@ -132,6 +133,35 @@ describe("MP SIEM DOM adapter fixtures", () => {
     await feature.mount();
     feature.onDomChanged();
     expect(document.querySelector(".apepatrol-ioc-description")).toBeTruthy();
+    document.querySelector(".apepatrol-ioc-description").value = "Public resolver";
+    await expect(feature.submitCurrentRow({ confirmOperation: () => true })).resolves.toBe(true);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "siem:ioc-description:set",
+      token: "list-token",
+      row: ["8.8.8.8", "ip", ""],
+      description: "Public resolver",
+      username: "analyst",
+    });
+    feature.unmount();
+  });
+  it("prevents a double IOC-description submit and keeps the UI pending", async () => {
+    document.body.innerHTML = await fixture("table-list");
+    let finish;
+    globalThis.browser = { runtime: { sendMessage: vi.fn(() => new Promise((resolve) => { finish = resolve; })) } };
+    const client = {
+      getTableLists: async () => [{ name: "IOCs_Value", token: "list-token" }],
+      getCurrentUser: async () => ({ login: "analyst" }),
+    };
+    const feature = new IocDescriptionFeature(client, { features: { addIocDescription: true }, iocListName: "IOCs_Value" }, { debug() {} });
+    await feature.mount();
+    feature.input.value = "Description";
+    const firstSubmit = feature.submitCurrentRow({ confirmOperation: () => true });
+    expect(feature.actionButton.disabled).toBe(true);
+    await expect(feature.submitCurrentRow({ confirmOperation: () => true })).rejects.toThrow("already in progress");
+    finish({ ok: true, result: {} });
+    await expect(firstSubmit).resolves.toBe(true);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(feature.actionButton.disabled).toBe(false);
     feature.unmount();
   });
 });

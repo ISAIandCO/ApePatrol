@@ -74,14 +74,4 @@ describe("SIEM API client", () => {
     expect(xhr.headers["Content-Type"]).toBe("application/json; charset=utf-8");
   });
 
-  it("never replays mutating POST requests after a Fetch failure", async () => {
-    const xhrFactory = vi.fn();
-    const client = new SiemApiClient("https://siem.example", {
-      fetchImpl: async () => { throw new TypeError("NetworkError"); },
-      xhrFactory,
-    });
-
-    await expect(client.addTableListRow("token", { value: "ioc" })).rejects.toMatchObject({ kind: "network" });
-    expect(xhrFactory).not.toHaveBeenCalled();
-  });
 });

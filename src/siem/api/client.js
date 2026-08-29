@@ -216,14 +216,6 @@ export class SiemApiClient {
     return this.request(`/api/v3/events/filters/${encodeURIComponent(id)}?withRemoved=false`, options);
   }
 
-  createSavedFilter(filter, options = {}) {
-    return this.request("/api/v3/events/filters", { ...options, method: "POST", body: filter });
-  }
-
-  deleteSavedFilter(id, options = {}) {
-    return this.request(`/api/v3/events/filters/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
-  }
-
   getAssets(query, options = {}) {
     return this.request("/api/assets_temporal_readmodel/v1/assets_grid", { ...options, method: "POST", body: query });
   }
@@ -236,11 +228,4 @@ export class SiemApiClient {
     return this.cached(`edr:${agentId}`, 5 * 60_000, () => this.request(`/api/edr/v1/agents/${encodeURIComponent(agentId)}/discovery`, options));
   }
 
-  addTableListRow(token, row, options = {}) {
-    return this.request(`/api/whitelists/${encodeURIComponent(token)}/insert`, { ...options, method: "POST", body: row });
-  }
-
-  removeTableListRow(token, row, options = {}) {
-    return this.request(`/api/whitelists/${encodeURIComponent(token)}/remove`, { ...options, method: "POST", body: row });
-  }
 }

@@ -17,29 +17,62 @@ function frameDocument(element) {
   }
 }
 
-function allRoots(root = document) {
-  const roots = [root];
+const rootCaches = new WeakMap();
+const rootDiscoveryStats = { fullScans: 0, incrementalScans: 0 };
+
+function isConnectedRoot(root) {
+  if (root === document) return true;
+  return Boolean(root?.isConnected || root?.host?.isConnected || root?.documentElement?.isConnected);
+}
+
+function addDiscoveredRoot(cache, candidate, queue) {
+  if (!candidate || cache.roots.has(candidate)) return;
+  cache.roots.add(candidate);
+  queue.push(candidate);
+}
+
+function discoverNestedRoots(candidate, cache, queue) {
+  if (!candidate) return;
+  addDiscoveredRoot(cache, candidate.shadowRoot, queue);
+  addDiscoveredRoot(cache, frameDocument(candidate), queue);
+  for (const element of candidate.querySelectorAll?.("*") ?? []) {
+    addDiscoveredRoot(cache, element.shadowRoot, queue);
+    addDiscoveredRoot(cache, frameDocument(element), queue);
+  }
+}
+
+function createRootCache(root) {
+  rootDiscoveryStats.fullScans += 1;
+  const cache = { roots: new Set([root]) };
   const queue = [root];
-  while (queue.length) {
-    const current = queue.shift();
-    const currentDocument = frameDocument(current);
-    if (currentDocument && !roots.includes(currentDocument)) {
-      roots.push(currentDocument);
-      queue.push(currentDocument);
-    }
-    for (const element of current.querySelectorAll?.("*") ?? []) {
-      if (element.shadowRoot && !roots.includes(element.shadowRoot)) {
-        roots.push(element.shadowRoot);
-        queue.push(element.shadowRoot);
-      }
-      const childDocument = frameDocument(element);
-      if (childDocument && !roots.includes(childDocument)) {
-        roots.push(childDocument);
-        queue.push(childDocument);
-      }
+  while (queue.length) discoverNestedRoots(queue.shift(), cache, queue);
+  rootCaches.set(root, cache);
+  return cache;
+}
+
+function cachedRoots(root) {
+  return rootCaches.get(root) ?? createRootCache(root);
+}
+
+function updateRootCache(root, records = []) {
+  const cache = cachedRoots(root);
+  if (!records.length) return cache;
+  rootDiscoveryStats.incrementalScans += 1;
+  const queue = [];
+  for (const record of records) {
+    for (const node of record.addedNodes ?? []) {
+      if (node?.nodeType === 1 || node?.nodeType === 9 || node?.nodeType === 11) discoverNestedRoots(node, cache, queue);
     }
   }
-  return roots;
+  while (queue.length) discoverNestedRoots(queue.shift(), cache, queue);
+  for (const candidate of cache.roots) {
+    if (candidate !== root && !isConnectedRoot(candidate)) cache.roots.delete(candidate);
+  }
+  return cache;
+}
+
+function allRoots(root = document) {
+  return [...cachedRoots(root).roots].filter((candidate) => candidate === root || isConnectedRoot(candidate));
 }
 
 function queryDeep(selector, root = document) {
@@ -86,6 +119,7 @@ export class SiemDomAdapter {
     this.cachedRoot = null;
     this.cachedCard = null;
     this.cachedCardRoots = null;
+    this.cachedFields = null;
   }
 
   detect() {
@@ -94,6 +128,10 @@ export class SiemDomAdapter {
 
   getRoot() {
     if (this.cachedRoot && (this.cachedRoot.isConnected || this.cachedRoot.host?.isConnected)) return this.cachedRoot;
+    this.cachedRoot = null;
+    this.cachedCard = null;
+    this.cachedCardRoots = null;
+    this.cachedFields = null;
     const legacyFrame = queryDeep("#legacyApplicationFrame");
     this.cachedRoot = queryDeep("siem-core")?.shadowRoot
       ?? queryDeep("ips-shell-remote-app")?.shadowRoot
@@ -115,12 +153,54 @@ export class SiemDomAdapter {
     }
     if (!this.cachedCard && findFieldLabel("uuid", root)) this.cachedCard = root;
     this.cachedCardRoots = this.cachedCard ? allRoots(this.cachedCard) : null;
+    this.cachedFields = null;
     return this.cachedCard;
   }
 
-  refreshFieldRoots() {
+  refreshFieldRoots(records = []) {
+    updateRootCache(document, records);
+    const currentRoot = this.getRoot();
+    if (currentRoot && currentRoot !== document) updateRootCache(currentRoot, records);
     const card = this.getEventCard();
-    this.cachedCardRoots = card ? allRoots(card) : null;
+    if (card) {
+      updateRootCache(card, records);
+      this.cachedCardRoots = allRoots(card);
+    } else {
+      this.cachedCardRoots = null;
+    }
+    this.cachedFields = null;
+  }
+
+  getObservationRoots() {
+    const root = this.getRoot();
+    return [...new Set([...allRoots(document), ...(root && root !== document ? allRoots(root) : [])])];
+  }
+
+  filterMutationRecords(records) {
+    return records.filter((record) => {
+      const nodes = [...record.addedNodes, ...record.removedNodes];
+      if (!nodes.length) return true;
+      return nodes.some((node) => {
+        const element = node.nodeType === 1 ? node : node.parentElement;
+        return !element?.closest?.("[data-apepatrol-ui]");
+      });
+    });
+  }
+
+  fieldIndex() {
+    if (this.cachedFields) return this.cachedFields;
+    const card = this.getEventCard();
+    const fields = new Map();
+    if (card) {
+      for (const selector of FIELD_SELECTORS) {
+        for (const label of queryAllDeep(selector, card)) {
+          const name = labelName(label);
+          if (FIELD_NAME_PATTERN.test(name) && !fields.has(name)) fields.set(name, label);
+        }
+      }
+    }
+    this.cachedFields = fields;
+    return fields;
   }
 
   getEventField(name) {
@@ -129,13 +209,7 @@ export class SiemDomAdapter {
   }
 
   getEventFieldElement(name) {
-    const card = this.getEventCard();
-    if (!card) return null;
-    const escaped = CSS.escape(name);
-    const roots = this.cachedCardRoots ?? allRoots(card);
-    const direct = roots.map((root) => root.querySelector?.(`[data-field-name='${escaped}'], [data-field='${escaped}']`)).find(Boolean);
-    if (direct) return direct;
-    return findFieldLabel(name, card);
+    return this.fieldIndex().get(name) ?? null;
   }
 
   readFieldContainer(label) {
@@ -164,19 +238,10 @@ export class SiemDomAdapter {
   getAssetFields() { return queryDeep("[data-testid*='asset'], [class*='asset']", this.getEventCard() ?? this.getRoot()); }
 
   extractVisibleFields() {
-    const card = this.getEventCard();
-    if (!card) return {};
     const event = {};
-    const seen = new Set();
-    for (const selector of FIELD_SELECTORS) {
-      for (const label of queryAllDeep(selector, card)) {
-        if (seen.has(label)) continue;
-        seen.add(label);
-        const name = labelName(label);
-        if (!FIELD_NAME_PATTERN.test(name) || event[name] !== undefined) continue;
-        const value = this.readFieldContainer(label);
-        if (value !== null && value !== "") event[name] = value;
-      }
+    for (const [name, label] of this.fieldIndex()) {
+      const value = this.readFieldContainer(label);
+      if (value !== null && value !== "") event[name] = value;
     }
     return event;
   }
@@ -210,5 +275,8 @@ export class SiemDomAdapter {
     return Boolean(selectors[feature] && queryDeep(selectors[feature], fieldElement));
   }
 }
+
+export function getRootDiscoveryStats() { return { ...rootDiscoveryStats }; }
+export function resetRootDiscoveryStats() { rootDiscoveryStats.fullScans = 0; rootDiscoveryStats.incrementalScans = 0; }
 
 export { allRoots, queryAllDeep, queryDeep, SiemDomAdapter as R27_3Adapter };

@@ -11,7 +11,7 @@ Useful domain knowledge retained during migration:
 - Sysmon 1, Windows 4688 and Linux `execve` process relationships;
 - event export, share link, enrichment, custom filters and IOC description workflows.
 
-## Firefox 3.0 layers
+## Firefox 3.2 layers
 
 ```mermaid
 flowchart TD
@@ -19,24 +19,23 @@ flowchart TD
   B -->|"dynamic registration"| C["ISOLATED content bundle"]
   C --> D["R27.3 DOM adapter"]
   C --> A["SiemApiClient"]
-  A -->|"allowlisted relative path"| B
+  A -->|"allowlisted read operation"| B
   B -->|"authenticated background XHR"| S["Configured SIEM origin"]
   C --> F["Feature modules"]
-  B -->|"only when IOC description is enabled"| M["MAIN network bridge"]
   P["Popup"] -->|"message"| C
-  P -->|"external fetch with local secret"| B
+  P -->|"typed mutation / external request"| B
+  P -->|"session snapshot"| G["Process graph tab"]
 ```
 
-- `src/background`: registration lifecycle, allowlisted same-origin SIEM proxy, secret-backed external adapters, tab opening.
-- `src/content`: per-instance orchestration and popup message API.
-- `src/page-bridge`: idempotent XHR/fetch bridge with endpoint allowlist, TTL and unpatch.
+- `src/background`: registration lifecycle, allowlisted same-origin read proxy, specialized IOC/Table List mutations, graph session snapshots, secret-backed external adapters, tab opening.
+- `src/content`: per-instance orchestration, live settings propagation and popup message API.
 - `src/siem/api`: transport-independent client, timeout/cache and typed errors.
-- `src/siem/dom`: R27.3 adapter and one debounced observer controller.
+- `src/siem/dom`: R27.3 adapter with cached roots/field index and one debounced multi-root observer controller. Mutation batches incrementally invalidate only changed roots.
 - `src/siem/features`: field actions, related events, IOC, Table Lists and EDR UI.
-- `src/siem/process`: bounded local process graph and visualization model; `src/process-graph` renders the interactive graph in an independent extension tab.
-- `src/shared`: settings/migration, secret separation, PDQL, URL, hash, time and logging.
+- `src/siem/process`: indexed bounded process graph, PID time-window protection, local filters and visualization model; `src/process-graph` renders an autonomous session snapshot with spatial hit testing.
+- `src/shared`: settings/migration, secret separation, PDQL, URL, hash, time, stable error codes, structured logging and exact AI-payload preparation.
 - `src/popup` / `src/options`: shared application operations rendered with DOM APIs.
 
 ## Security invariants
 
-The built manifest has no `host_permissions` or `content_scripts`. Dynamic registration only follows a granted exact-origin permission. Internal SIEM API messages are accepted only from a configured SIEM tab, resolve back to that exact origin and pass a method/path allowlist. No key is returned by `settings:get`. External API calls are restricted to extension pages and require host plus Firefox data-collection permissions. MAIN bridge state contains only a one-use token/description/username for the selected table and expires after 30 seconds.
+The built manifest has no `host_permissions` or `content_scripts`. Dynamic registration only follows a granted exact-origin permission and registers only an `ISOLATED` bundle. Internal SIEM API messages are accepted only from a configured SIEM tab, resolve back to that exact origin and pass a method/path allowlist. Generic reads cannot reach mutating Table List routes; those routes require specialized confirmed actions and a second metadata/token check. No key is returned by `settings:get`. External API calls are restricted to extension pages or explicit IOC field actions and require host plus Firefox data-collection permissions. AI sends only a body whose freshly recomputed SHA-256 matches the exact preview.

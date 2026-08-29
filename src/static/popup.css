@@ -14,6 +14,7 @@ button:hover { border-color: #2b79c2; } button:disabled { opacity: .45; cursor: 
 nav button { white-space: nowrap; border: 0; border-radius: 0; background: transparent; padding: 9px 11px; }
 nav button.active { box-shadow: inset 0 -2px #2b79c2; color: #2b79c2; }
 main { padding: 12px 14px; } .panel { display: none; } .panel.active { display: block; }
+[hidden] { display: none !important; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; padding: 8px; border-radius: 5px; background: color-mix(in srgb, CanvasText 7%, Canvas); }
 .actions, .toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
 .scroll { max-height: 330px; overflow: auto; border: 1px solid color-mix(in srgb, CanvasText 15%, transparent); border-radius: 5px; }
@@ -21,3 +22,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflo
 textarea, select { width: 100%; margin: 6px 0; padding: 6px; } .danger { border-color: #b62929; color: #b62929; }
 .about { padding: 10px 14px 12px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); font-size: 11px; color: color-mix(in srgb, CanvasText 72%, transparent); }
 .about span { opacity: .8; }
+#ai-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; max-height: 180px; overflow: auto; margin: 8px 0; }
+#ai-fields label { overflow-wrap: anywhere; }
+#ai-preview-meta { white-space: pre-wrap; }
