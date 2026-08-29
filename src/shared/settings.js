@@ -28,7 +28,7 @@ export const BUILTIN_PROVIDERS = Object.freeze([
 ]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  schemaVersion: 5,
+  schemaVersion: 6,
   instances: [],
   features: {
     eventActions: true,
@@ -39,9 +39,24 @@ export const DEFAULT_SETTINGS = Object.freeze({
     addIocDescription: false,
     disableEdrIntegration: false,
     aiAssistant: false,
+    batchIoc: true,
+    investigationWorkspace: true,
+    ruleIntelligence: true,
   },
   iocListName: "IOCs_Value",
-  process: { maxNodes: 1000, maxDepth: 64 },
+  process: {
+    maxNodes: 1000,
+    maxDepth: 64,
+    seedWindowSeconds: 900,
+    expansionStepSeconds: 3600,
+    pageSize: 250,
+    queryConcurrency: 2,
+  },
+  iocBatch: {
+    concurrency: 2,
+    maxRetries: 2,
+    cacheTtlMinutes: { virustotal: 60, abuseipdb: 30, opentip: 60, threatfox: 30 },
+  },
   searchScope: { mode: "default", searchSources: [], localSources: [], groupIds: [] },
   externalProviders: BUILTIN_PROVIDERS,
   customFilters: BUILTIN_FILTERS,
@@ -95,6 +110,10 @@ export function normalizeSettings(input) {
   const process = {
     maxNodes: boundedInteger(input.process?.maxNodes, defaults.process.maxNodes, 1, 10000),
     maxDepth: boundedInteger(input.process?.maxDepth, defaults.process.maxDepth, 1, 256),
+    seedWindowSeconds: boundedInteger(input.process?.seedWindowSeconds, defaults.process.seedWindowSeconds, 60, 86400),
+    expansionStepSeconds: boundedInteger(input.process?.expansionStepSeconds, defaults.process.expansionStepSeconds, 300, 86400),
+    pageSize: boundedInteger(input.process?.pageSize, defaults.process.pageSize, 25, 1000),
+    queryConcurrency: boundedInteger(input.process?.queryConcurrency, defaults.process.queryConcurrency, 1, 4),
   };
   const aiMode = ["selected", "allowlist", "redacted", "full"].includes(input.ai?.mode) ? input.ai.mode : defaults.ai.mode;
   const inputProviders = Array.isArray(input.externalProviders) ? input.externalProviders.map(normalizeProvider).filter(Boolean) : [];
@@ -114,11 +133,19 @@ export function normalizeSettings(input) {
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    schemaVersion: 5,
+    schemaVersion: 6,
     instances,
     features,
     iocListName: String(input.iocListName || defaults.iocListName).slice(0, 120),
     process,
+    iocBatch: {
+      concurrency: boundedInteger(input.iocBatch?.concurrency, defaults.iocBatch.concurrency, 1, 4),
+      maxRetries: boundedInteger(input.iocBatch?.maxRetries, defaults.iocBatch.maxRetries, 0, 4),
+      cacheTtlMinutes: Object.fromEntries(Object.entries(defaults.iocBatch.cacheTtlMinutes).map(([provider, fallback]) => [
+        provider,
+        boundedInteger(input.iocBatch?.cacheTtlMinutes?.[provider], fallback, 1, 10080),
+      ])),
+    },
     searchScope: {
       mode: ["default", "selected", "all"].includes(input.searchScope?.mode) ? input.searchScope.mode : "default",
       searchSources: Array.isArray(input.searchScope?.searchSources) ? input.searchScope.searchSources.map(String) : [],

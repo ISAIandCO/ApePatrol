@@ -23,6 +23,12 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 
 ## Process
 
+- [ ] Первое открытие использует небольшой seed range и paged offsets, а не безусловный host-wide ±24h запрос.
+- [ ] Expand parents/children/both/siblings и previous/next interval добавляют новые узлы без дублей и повторного удаления уже загруженных.
+- [ ] Cancel останавливает активный запрос; partial graph и прежний snapshot остаются доступны.
+- [ ] Достижение `maxNodes` показывает limit indicator без error; явное «Разрешить ещё узлы» повышает cap, но не выше 10 000.
+- [ ] Time sliders меняют только локально видимый диапазон и не выполняют SIEM request.
+- [ ] После закрытия source tab «Подключить SIEM-вкладку» находит другую вкладку того же exact origin и разрешает продолжить expansion.
 - [ ] Sysmon Event ID 1 в свободном force-directed графе и хронологической раскладке.
 - [ ] Windows 4688 with GUID and PID/name fallback.
 - [ ] Linux `execve`.
@@ -51,6 +57,30 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] Иконка у каждого IOC-поля предлагает только подходящие типу API и ссылки; результат остаётся в меню этого поля.
 - [ ] VirusTotal, AbuseIPDB, OpenTIP и ThreatFox работают после трёх независимых шагов: сохранение ключа, data consent и endpoint permission.
 - [ ] Private/reserved IP не передаётся ни одному API.
+- [ ] Batch preview перечисляет каждую пару IOC/type/provider; без отдельного confirmation запросов нет.
+- [ ] Concurrency не превышает настройку; HTTP 429 соблюдает bounded Retry-After/backoff, cancel останавливает batch.
+- [ ] Ошибка/нет permission у одного provider не уничтожает успешные результаты других; retry запускает только выбранную failed pair.
+- [ ] Повторный batch в пределах TTL показывает cache result без внешнего запроса; после TTL выполняет новый запрос. API keys отсутствуют в cache.
+
+## Investigation Workspace / Compare
+
+- [ ] Создать, переименовать и удалить workspace; notes/tags/search/sort сохраняются после перезапуска Firefox.
+- [ ] Прикрепить current event/host/account/incident из popup, IOC из field menu и process правым кликом из графа.
+- [ ] Закрыть SIEM и убедиться, что локальные snapshots остаются видимыми; event link корректно деградирует при отсутствии UUID/origin.
+- [ ] JSON/Markdown export пригоден для тикета и не содержит extension API keys/secrets.
+- [ ] Выбрать 2 и 3 event items: same/changed/only поля сгруппированы в process/network/account/host/rule/raw; copy JSON/Markdown работает.
+
+## Rule Intelligence
+
+- [ ] Correlation event показывает rule name/id/description/category/severity/KB/references.
+- [ ] MITRE ATT&CK отображается только при явном mapping в rule/event metadata; process name не создаёт guessed technique.
+
+## Enterprise Profiles
+
+- [ ] Export/import replace и merge проходят schema validation и не включают API keys.
+- [ ] Wrong kind/schema и malformed JSON не изменяют текущие settings.
+- [ ] Firefox `storage.managed` defaults применяются; locked feature/instances/providers нельзя изменить ни через UI, ни через runtime save.
+- [ ] User overrides продолжают работать для путей вне `lockedPaths`; managed policy live update применяется к открытой SIEM-вкладке.
 
 ## Assets/EDR
 

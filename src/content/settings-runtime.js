@@ -1,6 +1,7 @@
 export function domSettingsFingerprint(settings) {
   return JSON.stringify({
     eventActions: settings.features.eventActions,
+    workspace: settings.features.investigationWorkspace,
     hideEdr: settings.features.disableEdrIntegration,
     iocDescription: settings.features.addIocDescription,
     iocListName: settings.iocListName,

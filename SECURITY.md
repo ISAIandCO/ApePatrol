@@ -15,6 +15,10 @@ SIEM page JavaScript, event fields, настройки, provider responses и LL
 - secrets находятся в `storage.local`, внешний fetch выполняет background page;
 - debug log имеет level/module/operation и редактирует secret-like keys, request body и full event payload;
 - AI отправка повторно строит payload и сравнивает SHA-256 с показанным preview; full/redaction режимы не объявляются DLP.
+- Batch IOC запускается только после табличного preview/confirmation, ограничен 200 jobs и 4 concurrent requests, обрабатывает каждый provider независимо и не сохраняет API keys в cache;
+- Workspace messages принимаются только от extension pages или настроенного SIEM origin; snapshots очищаются от secret-like keys и имеют жёсткие лимиты item/workspace;
+- settings profiles не содержат secrets, проходят schema validation/normalization; managed locks повторно применяет background, а не только UI;
+- Rule Intelligence не выводит ATT&CK mapping, если он отсутствует в явных SIEM metadata.
 
 ## Disclosure
 

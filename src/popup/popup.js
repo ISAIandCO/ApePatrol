@@ -5,8 +5,21 @@ import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
 import { loadOptionalPopupFeatures } from "./feature-loader.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
+import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../shared/ioc-batch.js";
 
-const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null, aiPreviewHash: null };
+const state = {
+  tab: null,
+  context: null,
+  settings: null,
+  related: [],
+  lists: [],
+  knowledgeBaseUrl: null,
+  rule: null,
+  aiPreviewHash: null,
+  iocs: [],
+  batchJobs: [],
+  batchRequestId: null,
+};
 const byId = (id) => document.getElementById(id);
 const setStatus = (message) => { byId("status").textContent = message; };
 const showError = (target, error) => { setSafeText(target, error?.message ?? String(error)); };
@@ -46,6 +59,9 @@ function applyFeatureVisibility() {
   setPanelAvailability("incidents", features.incidentContext);
   setPanelAvailability("ai", features.aiAssistant);
   byId("table-list-tools").hidden = !features.tableListTools;
+  byId("workspace-actions").hidden = !features.investigationWorkspace;
+  byId("batch-ioc").hidden = !features.batchIoc;
+  byId("rule-intelligence").hidden = !features.ruleIntelligence || !state.rule;
 }
 
 function selectedAiFields() {
@@ -99,6 +115,138 @@ function renderEvent() {
   invalidateAiPreview();
   renderAiFieldPicker();
   renderCustomFilters();
+  renderWorkspaceActions();
+  renderBatchChoices();
+}
+
+function renderWorkspaceActions() {
+  const event = state.context?.event ?? {};
+  byId("pin-current-event").hidden = !event.uuid;
+  byId("pin-current-host").hidden = !event["event_src.host"];
+  byId("pin-current-account").hidden = !(event["subject.account.name"] ?? event["object.account.name"]);
+  byId("pin-current-incident").hidden = !event.incident_id;
+}
+
+function renderRuleIntelligence() {
+  const panel = byId("rule-intelligence");
+  const output = byId("rule-intelligence-output");
+  output.replaceChildren();
+  panel.hidden = !state.rule || !state.settings.features.ruleIntelligence;
+  if (!state.rule) return;
+  const list = document.createElement("dl"); list.className = "rule-grid";
+  const rows = [
+    ["Name", state.rule.name], ["ID", state.rule.id], ["Description", state.rule.description],
+    ["Severity", state.rule.severity], ["Categories", state.rule.categories?.join(", ")],
+    ["MITRE ATT&CK", state.rule.mitreTechniques?.join(", ")],
+    ["ATT&CK source", state.rule.mitreSource], ["References", state.rule.references?.join("\n")],
+    ["Status", state.rule.metadata?.status], ["Version", state.rule.metadata?.version], ["Author", state.rule.metadata?.author],
+  ];
+  for (const [label, value] of rows.filter(([, value]) => value)) {
+    const term = document.createElement("dt"); term.textContent = label;
+    const detail = document.createElement("dd"); detail.textContent = value;
+    list.append(term, detail);
+  }
+  output.append(list);
+}
+
+function invalidateBatchPreview() {
+  state.batchJobs = [];
+  byId("batch-run").disabled = true;
+  byId("batch-preview-output").replaceChildren();
+}
+
+function checkedValues(selector) { return [...document.querySelectorAll(selector)].filter((input) => input.checked).map((input) => input.value); }
+
+function renderBatchChoices() {
+  if (!state.settings.features.batchIoc) return;
+  state.iocs = collectEventIocs(state.context?.event);
+  const iocList = byId("batch-ioc-list"); iocList.replaceChildren();
+  state.iocs.forEach((ioc, index) => {
+    const label = document.createElement("label");
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = String(index); input.checked = true;
+    input.addEventListener("change", invalidateBatchPreview);
+    label.append(input, document.createTextNode(` ${ioc.type}: ${ioc.value} (${ioc.fields.join(", ")})`)); iocList.append(label);
+  });
+  if (!state.iocs.length) iocList.textContent = "В текущем событии не найдены поддерживаемые IOC.";
+  const providerList = byId("batch-provider-list"); providerList.replaceChildren();
+  for (const [id, provider] of Object.entries(IOC_BATCH_PROVIDERS)) {
+    const label = document.createElement("label");
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = id; input.checked = true;
+    input.addEventListener("change", invalidateBatchPreview);
+    label.append(input, document.createTextNode(` ${provider.name}`)); providerList.append(label);
+  }
+  invalidateBatchPreview();
+}
+
+function appendCell(row, value) { const cell = document.createElement("td"); cell.textContent = String(value ?? ""); row.append(cell); }
+
+function previewIocBatch() {
+  const iocs = checkedValues("#batch-ioc-list input").map((index) => state.iocs[Number(index)]).filter(Boolean);
+  state.batchJobs = buildIocBatchJobs(iocs, IOC_BATCH_PROVIDERS, checkedValues("#batch-provider-list input"));
+  if (!state.batchJobs.length) throw new Error("Выберите хотя бы один совместимый IOC/provider");
+  const table = document.createElement("table");
+  const head = document.createElement("tr"); for (const label of ["IOC", "Тип", "Provider", "Будет отправлен"]) { const th = document.createElement("th"); th.textContent = label; head.append(th); } table.append(head);
+  for (const job of state.batchJobs) {
+    const row = document.createElement("tr");
+    for (const value of [job.ioc.value, job.ioc.type, IOC_BATCH_PROVIDERS[job.provider].name, "Да, после подтверждения"]) appendCell(row, value);
+    table.append(row);
+  }
+  const output = byId("batch-preview-output"); output.replaceChildren(table);
+  byId("batch-run").disabled = false;
+}
+
+function renderBatchResults(batch) {
+  const container = byId("batch-results"); container.replaceChildren();
+  const summary = document.createElement("p"); summary.textContent = `${batch.summary.ok}/${batch.summary.total} успешно · ${batch.summary.cached} из cache · ${batch.summary.errors} ошибок · ${batch.summary.cancelled} отменено`; container.append(summary);
+  const table = document.createElement("table");
+  const head = document.createElement("tr"); for (const label of ["IOC", "Provider", "Status", "Result", "Action"]) { const th = document.createElement("th"); th.textContent = label; head.append(th); } table.append(head);
+  for (const result of batch.results) {
+    const row = document.createElement("tr"); row.className = result.status === "ok" ? result.cached ? "batch-cached" : "batch-ok" : "batch-error";
+    const iocType = result.iocType ?? result.ioc?.type;
+    const iocValue = typeof result.ioc === "string" ? result.ioc : result.ioc?.value;
+    appendCell(row, `${iocType}: ${iocValue}`); appendCell(row, result.providerName ?? IOC_BATCH_PROVIDERS[result.provider]?.name ?? result.provider); appendCell(row, result.cached ? "cached" : result.status); appendCell(row, result.summary ?? result.error);
+    const action = document.createElement("td");
+    if (result.status === "error" && result.retryable) {
+      const retry = document.createElement("button"); retry.type = "button"; retry.textContent = "Retry provider";
+      retry.addEventListener("click", () => runIocBatch([{ provider: result.provider, ioc: result.ioc }], { bypassCache: true }).catch((error) => showError(container, error))); action.append(retry);
+    }
+    row.append(action); table.append(row);
+  }
+  container.append(table);
+}
+
+async function runIocBatch(jobs = state.batchJobs, { bypassCache = false } = {}) {
+  if (!jobs.length) throw new Error("Сначала сформируйте preview");
+  if (!confirm(`Отправить ${jobs.length} IOC/provider запросов ровно по показанному preview? Cache может исключить повторную внешнюю отправку.`)) return;
+  const requestId = crypto.randomUUID();
+  state.batchRequestId = requestId;
+  byId("batch-run").disabled = true; byId("batch-cancel").disabled = false;
+  try {
+    const response = await browser.runtime.sendMessage({ type: "enrichment:batch:start", requestId, jobs, bypassCache, confirmed: true });
+    if (!response?.ok) throw new Error(response?.error ?? "IOC batch failed");
+    renderBatchResults(response.batch);
+  } finally {
+    state.batchRequestId = null; byId("batch-cancel").disabled = true; byId("batch-run").disabled = !state.batchJobs.length;
+  }
+}
+
+async function pinCurrent(type) {
+  const event = state.context.event;
+  const account = event["subject.account.name"] ?? event["object.account.name"];
+  const definitions = {
+    event: { value: event.uuid, label: event.correlation_name ?? event.uuid, snapshot: event },
+    host: { value: event["event_src.host"], label: event["event_src.host"], snapshot: { host: event["event_src.host"] } },
+    account: { value: account, label: account, snapshot: { account } },
+    incident: { value: event.incident_id, label: `Incident ${event.incident_id}`, snapshot: { incidentId: event.incident_id } },
+  };
+  const item = definitions[type];
+  if (!item?.value) throw new Error(`В событии нет объекта ${type}`);
+  const response = await browser.runtime.sendMessage({
+    type: "workspace:item:add", siemOrigin: state.context.origin, sourceIncidentId: event.incident_id ?? null,
+    item: { type, ...item, sourceEventUuid: event.uuid ?? null },
+  });
+  if (!response?.ok) throw new Error(response?.error ?? "Не удалось прикрепить объект");
+  byId("workspace-output").textContent = `Добавлено в «${response.workspace.title}»`;
 }
 
 function renderCustomFilters() {
@@ -225,7 +373,9 @@ async function initialize() {
   }
   if (optional.rule?.ok) {
     state.knowledgeBaseUrl = optional.rule.value.knowledgeBaseUrl;
+    state.rule = optional.rule.value.rule;
     byId("open-rule").disabled = !state.knowledgeBaseUrl;
+    renderRuleIntelligence();
   } else if (optional.rule) {
     byId("open-rule").disabled = true;
     byId("open-rule").title = optional.rule.error?.message ?? "Rule context is unavailable";
@@ -239,6 +389,10 @@ byId("copy-link").addEventListener("click", async () => navigator.clipboard.writ
 byId("open-rule").addEventListener("click", () => state.knowledgeBaseUrl && browser.runtime.sendMessage({ type: "tabs:open", url: state.knowledgeBaseUrl }));
 byId("open-process-graph").addEventListener("click", () => openProcessGraph("force").catch((error) => showError(byId("process-output"), error)));
 byId("open-process-timeline").addEventListener("click", () => openProcessGraph("timeline").catch((error) => showError(byId("process-output"), error)));
+byId("open-workspace").addEventListener("click", () => browser.tabs.create({ url: browser.runtime.getURL("workspace.html") }));
+for (const [id, type] of [["pin-current-event", "event"], ["pin-current-host", "host"], ["pin-current-account", "account"], ["pin-current-incident", "incident"]]) {
+  byId(id).addEventListener("click", () => pinCurrent(type).catch((error) => showError(byId("workspace-output"), error)));
+}
 byId("asset-lookup").addEventListener("click", async () => {
   byId("asset-output").textContent = "Loading from the current SIEM instance…";
   try { byId("asset-output").textContent = JSON.stringify((await sendToContent({ type: "siem:asset" })).asset, null, 2); }
@@ -253,6 +407,13 @@ byId("open-filter").addEventListener("click", () => {
 });
 byId("table-add").addEventListener("click", () => applyTableOperation("add").catch((error) => showError(byId("tools-output"), error)));
 byId("table-remove").addEventListener("click", () => applyTableOperation("remove").catch((error) => showError(byId("tools-output"), error)));
+byId("batch-preview").addEventListener("click", () => {
+  try { previewIocBatch(); } catch (error) { showError(byId("batch-preview-output"), error); }
+});
+byId("batch-run").addEventListener("click", () => runIocBatch().catch((error) => showError(byId("batch-results"), error)));
+byId("batch-cancel").addEventListener("click", async () => {
+  if (state.batchRequestId) await browser.runtime.sendMessage({ type: "enrichment:batch:cancel", requestId: state.batchRequestId });
+});
 byId("ai-preview-button").addEventListener("click", async () => {
   byId("ai-preview-meta").textContent = "Формирую payload локально…";
   try {
@@ -291,10 +452,13 @@ byId("ai-run").addEventListener("click", async () => {
 });
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== "sync" || !changes[SYNC_STORAGE_KEY] || !state.settings || !state.context) return;
-  state.settings = normalizeSettings(changes[SYNC_STORAGE_KEY].newValue);
-  applyFeatureVisibility();
-  renderEvent();
+  if (!state.settings || !state.context || !((area === "sync" && changes[SYNC_STORAGE_KEY]) || area === "managed")) return;
+  browser.runtime.sendMessage({ type: "settings:get" }).then((response) => {
+    if (!response?.ok) return;
+    state.settings = normalizeSettings(response.settings);
+    applyFeatureVisibility();
+    renderEvent();
+  });
 });
 
 initialize().catch((error) => {

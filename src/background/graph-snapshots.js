@@ -49,6 +49,20 @@ export async function getGraphSnapshot(id, storageArea = browser.storage.session
   return (await storageArea.get(key))[key] ?? null;
 }
 
+export async function updateGraphSnapshot(id, input, storageArea = browser.storage.session) {
+  if (!ID_PATTERN.test(String(id ?? ""))) throw new TypeError("Invalid process graph snapshot ID");
+  const existing = await getGraphSnapshot(id, storageArea);
+  if (!existing) throw new Error("Process graph snapshot not found");
+  const validated = validateSnapshot({
+    sourceTabId: input?.sourceTabId ?? existing.sourceTabId,
+    sourceEvent: input?.sourceEvent ?? existing.sourceEvent,
+    response: input?.response,
+  });
+  const snapshot = { ...validated, id: existing.id, createdAt: existing.createdAt, updatedAt: Date.now() };
+  await storageArea.set({ [snapshotKey(id)]: snapshot });
+  return { id: snapshot.id, createdAt: snapshot.createdAt, updatedAt: snapshot.updatedAt };
+}
+
 export async function deleteGraphSnapshot(id, storageArea = browser.storage.session) {
   if (!ID_PATTERN.test(String(id ?? ""))) return false;
   await storageArea.remove(snapshotKey(id));
