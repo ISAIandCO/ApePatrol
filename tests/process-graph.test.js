@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessGraph, buildProcessSearchPredicate, orderProcessTree } from "../src/siem/process/graph.js";
+import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
@@ -50,4 +50,17 @@ describe("process graph", () => {
     expect(parent.event.uuid).toBe("new");
   });
   it("supports missing GUID and respects max nodes", () => expect(buildProcessGraph([event(), event({ uuid: "2" })], { maxNodes: 1 }).truncated).toBe(true));
+  it("finds the originally selected process by GUID when its event UUID is not a process-start event", () => {
+    const start = event({ uuid: "start", time: "2026-01-01T00:00:00Z", "object.process.guid": "PROCESS" });
+    const selected = event({ uuid: "network-event", time: "2026-01-01T00:05:00Z", "object.process.guid": "PROCESS" });
+    const graph = buildProcessGraph([start]);
+    expect(findSourceProcessNodeId(graph, selected)).toBe(graph.nodes[0].id);
+  });
+  it("uses the closest prior PID instance when identifying the selected process", () => {
+    const oldProcess = event({ uuid: "old", time: "2026-01-01T00:00:00Z", "object.process.id": "20" });
+    const currentProcess = event({ uuid: "current", time: "2026-01-01T01:00:00Z", "object.process.id": "20" });
+    const selected = event({ uuid: "activity", time: "2026-01-01T01:05:00Z", "object.process.id": "20" });
+    const graph = buildProcessGraph([oldProcess, currentProcess]);
+    expect(findSourceProcessNodeId(graph, selected)).toBe(graph.nodes.find((node) => node.event.uuid === "current").id);
+  });
 });

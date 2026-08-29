@@ -3,9 +3,8 @@ import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { renderFilterTemplate } from "../siem/features/custom-filters.js";
-import { orderProcessTree } from "../siem/process/graph.js";
 
-const state = { tab: null, context: null, settings: null, related: [], graph: null, processMode: "tree", processScale: 1, processLoading: null, collapsed: new Set(), lists: [], knowledgeBaseUrl: null };
+const state = { tab: null, context: null, settings: null, related: [], lists: [], knowledgeBaseUrl: null };
 const byId = (id) => document.getElementById(id);
 const setStatus = (message) => { byId("status").textContent = message; };
 const showError = (target, error) => { setSafeText(target, error?.message ?? String(error)); };
@@ -90,103 +89,10 @@ function renderRelated() {
   if (!state.related.length) output.textContent = "No supported investigation fields are present in this event.";
 }
 
-function renderProcess() {
-  const output = byId("process-output");
-  output.replaceChildren();
-  output.style.zoom = String(state.processScale);
-  if (!state.graph) { output.textContent = "Build a bounded process graph for the current host."; return; }
-  const search = byId("process-search").value.toLowerCase();
-  const nodes = state.processMode === "timeline"
-    ? [...state.graph.nodes].sort((a, b) => a.time - b.time)
-    : orderProcessTree(state.graph);
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const relationCount = nodes.filter((node) => node.parentId).length;
-  const summary = document.createElement("p");
-  summary.className = "process-summary";
-  summary.textContent = state.processMode === "tree"
-    ? `Дерево: ${nodes.length} процессов, ${relationCount} parent/child-связей, ${state.graph.roots.length} корней.${relationCount ? "" : " В выбранных событиях не найдены поля родителя."}`
-    : `Таймлайн: ${nodes.length} процессов в хронологическом порядке; связи родителей не влияют на сортировку.`;
-  output.append(summary);
-  const hiddenByCollapse = (node) => {
-    let parentId = node.parentId;
-    while (parentId) {
-      if (state.collapsed.has(parentId)) return true;
-      parentId = nodeMap.get(parentId)?.parentId;
-    }
-    return false;
-  };
-  for (const node of nodes) {
-    const event = node.event;
-    const pid = event["object.process.id"] ?? event["subject.process.id"] ?? event["object.id"] ?? "?";
-    const process = event["object.process.cmdline"] ?? event["subject.process.cmdline"] ?? event["object.process.name"] ?? event["subject.process.name"] ?? "unknown";
-    const label = state.processMode === "timeline" ? `${event.time ?? ""} · PID ${pid} · ${process}` : `PID ${pid} · ${process} · ${event.time ?? ""}`;
-    if (search && !label.toLowerCase().includes(search)) continue;
-    if (!search && state.processMode === "tree" && hiddenByCollapse(node)) continue;
-    const row = document.createElement("div");
-    row.className = `process-row ${state.processMode}${event.uuid === state.context.event.uuid ? " source" : ""}`;
-    const text = document.createElement("span");
-    text.className = "process-label";
-    if (state.processMode === "tree") {
-      const prefix = document.createElement("span");
-      prefix.className = "process-tree-prefix";
-      prefix.textContent = `${"│  ".repeat(Math.max(0, Math.min(node.depth, 20) - 1))}${node.depth ? "└─ " : "● "}`;
-      text.append(prefix);
-    }
-    text.append(document.createTextNode(label));
-    row.title = JSON.stringify(event, null, 2);
-    const controls = document.createElement("span");
-    if (state.processMode === "tree" && node.children.length) {
-      const collapse = document.createElement("button");
-      collapse.textContent = state.collapsed.has(node.id) ? "▸" : "▾";
-      collapse.title = "Collapse or expand children";
-      collapse.addEventListener("click", () => { state.collapsed.has(node.id) ? state.collapsed.delete(node.id) : state.collapsed.add(node.id); renderProcess(); });
-      controls.append(collapse);
-    }
-    const copy = document.createElement("button");
-    copy.textContent = "Copy";
-    copy.title = "Copy PID, GUID and command line";
-    copy.addEventListener("click", () => navigator.clipboard.writeText(JSON.stringify({ pid, guid: event["object.process.guid"] ?? event["subject.process.guid"], cmdline: process }, null, 2)));
-    const open = document.createElement("button");
-    open.textContent = "Open";
-    open.title = "Open the related process-start event";
-    open.addEventListener("click", () => event.uuid && browser.runtime.sendMessage({ type: "tabs:open", url: buildEventSearchUrl(state.context.origin, buildEqualityPredicate("uuid", event.uuid), event.time, "15m") }));
-    controls.append(copy, open);
-    row.append(text, controls);
-    output.append(row);
-  }
-  if (state.graph.truncated) {
-    const note = document.createElement("p"); note.textContent = "Result was truncated at the configured node limit."; output.prepend(note);
-  }
-}
-
-function renderProcessMode() {
-  for (const mode of ["tree", "timeline"]) {
-    const button = byId(`process-${mode}-mode`);
-    button.classList.toggle("active", state.processMode === mode);
-    button.setAttribute("aria-pressed", String(state.processMode === mode));
-  }
-}
-
-async function loadProcessGraph() {
-  if (state.processLoading) return state.processLoading;
-  const controls = ["load-process", "process-tree-mode", "process-timeline-mode"].map(byId);
-  controls.forEach((button) => { button.disabled = true; });
-  byId("process-output").textContent = "Building graph…";
-  state.processLoading = sendToContent({ type: "siem:process" })
-    .then((response) => { state.graph = response.graph; renderProcess(); })
-    .catch((error) => { showError(byId("process-output"), error); throw error; })
-    .finally(() => {
-      state.processLoading = null;
-      controls.forEach((button) => { button.disabled = false; });
-    });
-  return state.processLoading;
-}
-
-async function selectProcessMode(mode) {
-  state.processMode = mode;
-  renderProcessMode();
-  if (!state.graph) await loadProcessGraph();
-  else renderProcess();
+async function openProcessGraph(layout) {
+  if (!state.tab?.id) throw new Error("No active SIEM tab");
+  const search = new URLSearchParams({ tabId: String(state.tab.id), layout });
+  await browser.tabs.create({ url: browser.runtime.getURL(`process-graph.html?${search}`) });
 }
 
 async function downloadEvent() {
@@ -239,8 +145,6 @@ async function initialize() {
   const related = await sendToContent({ type: "siem:related" });
   state.related = related.actions;
   renderRelated();
-  renderProcessMode();
-  renderProcess();
   if (state.context.event.correlation_name) {
     const ruleContext = await sendToContent({ type: "siem:rule-context" });
     state.knowledgeBaseUrl = ruleContext.knowledgeBaseUrl;
@@ -253,12 +157,8 @@ byId("copy-json").addEventListener("click", () => navigator.clipboard.writeText(
 byId("download-json").addEventListener("click", () => downloadEvent().catch((error) => showError(byId("event-json"), error)));
 byId("copy-link").addEventListener("click", async () => navigator.clipboard.writeText(await eventLink()));
 byId("open-rule").addEventListener("click", () => state.knowledgeBaseUrl && browser.runtime.sendMessage({ type: "tabs:open", url: state.knowledgeBaseUrl }));
-byId("load-process").addEventListener("click", () => loadProcessGraph().catch(() => {}));
-byId("process-search").addEventListener("input", renderProcess);
-byId("process-tree-mode").addEventListener("click", () => selectProcessMode("tree").catch(() => {}));
-byId("process-timeline-mode").addEventListener("click", () => selectProcessMode("timeline").catch(() => {}));
-byId("process-zoom-out").addEventListener("click", () => { state.processScale = Math.max(.7, state.processScale - .1); renderProcess(); });
-byId("process-zoom-in").addEventListener("click", () => { state.processScale = Math.min(1.6, state.processScale + .1); renderProcess(); });
+byId("open-process-graph").addEventListener("click", () => openProcessGraph("force").catch((error) => showError(byId("process-output"), error)));
+byId("open-process-timeline").addEventListener("click", () => openProcessGraph("timeline").catch((error) => showError(byId("process-output"), error)));
 byId("asset-lookup").addEventListener("click", async () => {
   byId("asset-output").textContent = "Loading from the current SIEM instance…";
   try { byId("asset-output").textContent = JSON.stringify((await sendToContent({ type: "siem:asset" })).asset, null, 2); }

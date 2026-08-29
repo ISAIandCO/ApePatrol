@@ -33,7 +33,7 @@ flowchart TD
 - `src/siem/api`: transport-independent client, timeout/cache and typed errors.
 - `src/siem/dom`: R27.3 adapter and one debounced observer controller.
 - `src/siem/features`: field actions, related events, IOC, Table Lists and EDR UI.
-- `src/siem/process`: bounded local process graph.
+- `src/siem/process`: bounded local process graph and visualization model; `src/process-graph` renders the interactive graph in an independent extension tab.
 - `src/shared`: settings/migration, secret separation, PDQL, URL, hash, time and logging.
 - `src/popup` / `src/options`: shared application operations rendered with DOM APIs.
 

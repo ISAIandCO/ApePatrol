@@ -12,7 +12,7 @@ import { IocDescriptionFeature } from "../siem/features/ioc-description.js";
 import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
-import { buildProcessGraph, buildProcessSearchPredicate } from "../siem/process/graph.js";
+import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
 import { createSiemBackgroundFetch } from "./siem-transport.js";
 
 const PROCESS_FIELDS = [
@@ -20,6 +20,7 @@ const PROCESS_FIELDS = [
   "object.process.id", "object.process.parent.id", "object.process.guid", "object.process.parent.guid",
   "subject.process.id", "subject.process.parent.id", "subject.process.guid", "subject.process.parent.guid",
   "object.process.name", "object.process.parent.name", "object.process.cmdline", "subject.process.name", "subject.process.cmdline",
+  "object.process.path", "subject.process.path", "subject.account.name", "object.account.name",
   "object.account.session_id", "correlation_name",
 ];
 
@@ -125,7 +126,13 @@ async function buildProcessContext(client, event, settings) {
   }
   const events = Array.isArray(result) ? result : result?.events ?? [];
   const graph = buildProcessGraph(events, settings.process);
-  return { ok: true, graph, sourceUuid: event.uuid ?? null };
+  return {
+    ok: true,
+    graph,
+    origin: client.origin,
+    sourceUuid: event.uuid ?? null,
+    sourceNodeId: findSourceProcessNodeId(graph, event),
+  };
 }
 
 initialize().catch((error) => console.warn(`[ApePatrol] initialization failed: ${error.message}`));

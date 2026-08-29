@@ -23,6 +23,7 @@ await build({
     background: path.join(root, "src/background/background.js"),
     content: path.join(root, "src/content/main.js"),
     popup: path.join(root, "src/popup/popup.js"),
+    "process-graph": path.join(root, "src/process-graph/process-graph.js"),
     options: path.join(root, "src/options/options.js"),
     "network-interceptor": path.join(root, "src/page-bridge/network-interceptor.js"),
   },
@@ -37,7 +38,7 @@ await build({
   minify: false,
 });
 
-for (const file of ["popup.html", "popup.css", "options.html", "options.css", "content.css"]) {
+for (const file of ["popup.html", "popup.css", "process-graph.html", "process-graph.css", "options.html", "options.css", "content.css"]) {
   await cp(path.join(root, "src/static", file), path.join(outDir, file));
 }
 await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
