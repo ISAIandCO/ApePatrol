@@ -7,7 +7,11 @@ export function createSiemBackgroundFetch(runtime = browser.runtime) {
       method: options.method ?? "GET",
       body: options.body,
     });
-    if (!response?.ok) throw new Error(response?.error ?? "SIEM background request failed");
+    if (!response?.ok) {
+      const error = new Error(response?.error ?? "SIEM background request failed");
+      error.code = response?.errorCode;
+      throw error;
+    }
     return new Response(response.response.status === 204 ? null : response.response.bodyText, {
       status: response.response.status,
       statusText: response.response.statusText,

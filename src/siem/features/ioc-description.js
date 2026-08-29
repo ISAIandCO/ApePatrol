@@ -12,19 +12,22 @@ export class IocDescriptionFeature {
     this.status = null;
     this.form = null;
     this.pending = false;
+    this.mounted = false;
   }
 
   async mount() {
     if (!this.settings.features.addIocDescription) return;
+    this.mounted = true;
     try {
       const [tables, user] = await Promise.all([this.client.getTableLists(), this.client.getCurrentUser()]);
+      if (!this.mounted) return;
       const list = Array.isArray(tables) ? tables : tables?.items ?? tables?.lists ?? [];
       this.table = list.find((item) => [item.name, item.displayName, item.title].includes(this.settings.iocListName)) ?? null;
       this.user = user?.login ?? user?.name ?? user?.username ?? "unknown";
       if (!this.table) this.logger.debug("IOC description disabled: list was not found", { list: this.settings.iocListName });
       else this.onDomChanged();
     } catch (error) {
-      this.logger.debug("IOC description capability unavailable", { kind: error.kind });
+      if (this.mounted) this.logger.debug("IOC description capability unavailable", { kind: error.kind });
     }
   }
 
@@ -103,6 +106,7 @@ export class IocDescriptionFeature {
   }
 
   unmount() {
+    this.mounted = false;
     this.input?.remove();
     this.actionButton?.remove();
     this.status?.remove();
