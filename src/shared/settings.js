@@ -28,7 +28,7 @@ export const BUILTIN_PROVIDERS = Object.freeze([
 ]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  schemaVersion: 6,
+  schemaVersion: 7,
   instances: [],
   features: {
     eventActions: true,
@@ -48,7 +48,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     maxNodes: 1000,
     maxDepth: 64,
     seedWindowSeconds: 900,
-    expansionStepSeconds: 3600,
+    expansionStepSeconds: 900,
     pageSize: 250,
     queryConcurrency: 2,
   },
@@ -111,7 +111,9 @@ export function normalizeSettings(input) {
     maxNodes: boundedInteger(input.process?.maxNodes, defaults.process.maxNodes, 1, 10000),
     maxDepth: boundedInteger(input.process?.maxDepth, defaults.process.maxDepth, 1, 256),
     seedWindowSeconds: boundedInteger(input.process?.seedWindowSeconds, defaults.process.seedWindowSeconds, 60, 86400),
-    expansionStepSeconds: boundedInteger(input.process?.expansionStepSeconds, defaults.process.expansionStepSeconds, 300, 86400),
+    expansionStepSeconds: Number(input.schemaVersion ?? 0) < 7
+      ? defaults.process.expansionStepSeconds
+      : boundedInteger(input.process?.expansionStepSeconds, defaults.process.expansionStepSeconds, 300, 86400),
     pageSize: boundedInteger(input.process?.pageSize, defaults.process.pageSize, 25, 1000),
     queryConcurrency: boundedInteger(input.process?.queryConcurrency, defaults.process.queryConcurrency, 1, 4),
   };
@@ -133,7 +135,7 @@ export function normalizeSettings(input) {
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    schemaVersion: 6,
+    schemaVersion: 7,
     instances,
     features,
     iocListName: String(input.iocListName || defaults.iocListName).slice(0, 120),

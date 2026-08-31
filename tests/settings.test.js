@@ -25,9 +25,14 @@ describe("settings schema", () => {
   });
   it("migrates legacy selected AI fields without weakening the new allowlist mode", () => {
     const migrated = normalizeSettings({ schemaVersion: 4, ai: { mode: "selected", allowFields: ["uuid", "time"] } });
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.process.expansionStepSeconds).toBe(900);
     expect(migrated.ai.selectedFields).toEqual(["uuid", "time"]);
     expect(migrated.ai.allowFields).toEqual(["uuid", "time"]);
     expect(normalizeSettings({ ai: { mode: "allowlist", allowFields: ["uuid"] } }).ai.mode).toBe("allowlist");
+  });
+  it("moves legacy graph expansion to 15 minutes while preserving a new explicit choice", () => {
+    expect(normalizeSettings({ schemaVersion: 6, process: { expansionStepSeconds: 3600 } }).process.expansionStepSeconds).toBe(900);
+    expect(normalizeSettings({ schemaVersion: 7, process: { expansionStepSeconds: 3600 } }).process.expansionStepSeconds).toBe(3600);
   });
 });

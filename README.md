@@ -8,7 +8,7 @@ ApePatrol — расширение-компаньон для расследов�
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.3.1
+## Возможности ApePatrol 3.3.2
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;

@@ -11,7 +11,7 @@ describe("progressive process queries", () => {
   it("starts from a bounded seed range and expands in explicit directions", () => {
     const seed = seedProcessRange("2026-01-01T12:00:00Z", 900);
     expect(Date.parse(seed.timeTo) - Date.parse(seed.timeFrom)).toBe(30 * 60_000);
-    expect(expansionRanges(seed, "parents", 3600)).toEqual([{ timeFrom: "2026-01-01T10:45:00.000Z", timeTo: "2026-01-01T11:45:00.000Z" }]);
+    expect(expansionRanges(seed, "parents", 900)).toEqual([{ timeFrom: "2026-01-01T11:30:00.000Z", timeTo: "2026-01-01T11:45:00.000Z" }]);
     expect(expansionRanges(seed, "both", 3600)).toHaveLength(2);
   });
 
