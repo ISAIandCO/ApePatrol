@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><img src="assets/icons/icon-48.png" alt=""><div><h1>ApePatrol <small>3.3</small></h1><p id="status">Connecting…</p></div></header>
+  <header><img src="assets/icons/icon-48.png" alt=""><div><h1>ApePatrol <small>3.4</small></h1><p id="status">Connecting…</p></div></header>
   <nav id="tabs" aria-label="Tools">
     <button data-panel="event" class="active">Event</button><button data-panel="process">Process</button>
     <button data-panel="related">Related</button><button data-panel="incidents">Incidents</button>
@@ -20,7 +20,19 @@
     <section id="incidents" class="panel"><h2>Incident context</h2><div id="incident-output"></div></section>
     <section id="enrichment" class="panel"><h2>Local asset / EDR</h2><button id="asset-lookup">Load asset context</button><pre id="asset-output"></pre><h2>Внешняя проверка IOC</h2><p>Нажмите на обезьянку рядом с нужным IOC для одиночной проверки либо соберите подтверждаемый batch ниже.</p><div id="batch-ioc"><h3>1. IOC из текущего события</h3><div id="batch-ioc-list" class="choice-list"></div><h3>2. Провайдеры</h3><div id="batch-provider-list" class="choice-list"></div><div class="actions"><button id="batch-preview">Сформировать preview</button><button id="batch-run" disabled>Подтвердить и отправить</button><button id="batch-cancel" disabled>Отменить batch</button></div><div id="batch-preview-output"></div><div id="batch-results"></div></div></section>
     <section id="tools" class="panel"><h2>Полезные фильтры</h2><select id="custom-filter"></select><p id="filter-description"></p><pre id="filter-preview"></pre><button id="open-filter">Открыть в SIEM</button><div id="table-list-tools"><h2>Table Lists</h2><button id="load-lists">Load available lists</button><select id="table-list"></select><textarea id="table-row" rows="3" placeholder='Row as JSON array, e.g. ["value", "type", "description"]'></textarea><div class="actions"><button id="table-add">Add row</button><button id="table-remove" class="danger">Remove row</button></div><pre id="tools-output"></pre></div></section>
-    <section id="ai" class="panel"><h2>SEC AI Assistant</h2><p id="ai-disclosure"></p><div id="ai-field-picker"><h3>Поля для отправки</h3><div id="ai-fields"></div></div><div class="actions"><button id="ai-preview-button">Сформировать точный payload</button><button id="ai-run" disabled>Отправить проверенный payload</button></div><p id="ai-preview-meta"></p><pre id="ai-preview"></pre><pre id="ai-output"></pre></section>
+    <section id="ai" class="panel">
+      <h2>SEC AI Assistant</h2><p id="ai-disclosure"></p>
+      <div id="ai-chat-messages" aria-live="polite"></div>
+      <label for="ai-message">Сообщение аналитику</label><textarea id="ai-message" rows="4" placeholder="Что нужно проверить в рамках этой вкладки?"></textarea>
+      <h3>Контекст следующего сообщения</h3><div id="ai-pending-context" class="ai-attachments"></div>
+      <div class="actions"><button id="ai-attach-current">Добавить текущее событие</button><button id="ai-clear" class="danger">Очистить диалог</button></div>
+      <label class="inline-choice"><input id="ai-allow-tools" type="checkbox"> Разрешить AI запрашивать read-only данные SIEM с отдельным подтверждением</label>
+      <div id="ai-tool-requests" hidden></div>
+      <div id="ai-field-picker"><h3>Поля событий для отправки</h3><div id="ai-fields"></div></div>
+      <div class="actions"><button id="ai-preview-button">Сформировать точный payload</button><button id="ai-run" disabled>Отправить проверенный payload</button></div>
+      <p id="ai-preview-meta"></p><details><summary>Точный внешний payload</summary><pre id="ai-preview"></pre></details>
+      <h3>Продолжить в Investigation Workspace</h3><div class="ai-promote"><select id="ai-workspace-choice"></select><button id="ai-promote">Перенести диалог</button></div><p id="ai-promotion-status"></p>
+    </section>
   </main>
   <footer class="about"><strong>ApePatrol</strong> · Analyst Productivity Extension<br>Firefox investigation companion for MaxPatrol SIEM.<br><span>Successor to SiemMonkey. Independent open-source project; not affiliated with or endorsed by Positive Technologies.</span></footer>
   <script src="popup.js"></script>

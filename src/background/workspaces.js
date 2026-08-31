@@ -1,8 +1,10 @@
 import { addWorkspaceItem, createWorkspace, normalizeWorkspace } from "../shared/workspace.js";
+import { mergeAiChats, normalizeAiChat } from "../shared/ai-chat.js";
 
 const DATABASE_NAME = "apepatrol-investigations";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAME = "workspaces";
+const CHAT_STORE_NAME = "aiChats";
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {
@@ -31,6 +33,7 @@ function openDatabase() {
         store.createIndex("updatedAt", "updatedAt");
         store.createIndex("siemOrigin", "siemOrigin");
       }
+      if (!database.objectStoreNames.contains(CHAT_STORE_NAME)) database.createObjectStore(CHAT_STORE_NAME, { keyPath: "workspaceId" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Cannot open ApePatrol workspace database"));
@@ -38,10 +41,10 @@ function openDatabase() {
   return databasePromise;
 }
 
-async function withStore(mode, callback) {
+async function withStore(mode, callback, storeName = STORE_NAME) {
   const database = await openDatabase();
-  const transaction = database.transaction(STORE_NAME, mode);
-  const result = await callback(transaction.objectStore(STORE_NAME));
+  const transaction = database.transaction(storeName, mode);
+  const result = await callback(transaction.objectStore(storeName));
   await transactionDone(transaction);
   return result;
 }
@@ -81,8 +84,31 @@ export async function updateWorkspace(id, patch) {
 export async function deleteWorkspace(id) {
   const existing = await getWorkspace(id);
   if (!existing) return false;
-  await withStore("readwrite", (store) => requestResult(store.delete(String(id))));
+  const database = await openDatabase();
+  const transaction = database.transaction([STORE_NAME, CHAT_STORE_NAME], "readwrite");
+  await Promise.all([
+    requestResult(transaction.objectStore(STORE_NAME).delete(String(id))),
+    requestResult(transaction.objectStore(CHAT_STORE_NAME).delete(String(id))),
+  ]);
+  await transactionDone(transaction);
   return true;
+}
+
+export async function getWorkspaceAiChat(workspaceId) {
+  if (!await getWorkspace(workspaceId)) throw new Error("Workspace not found");
+  const record = await withStore("readonly", (store) => requestResult(store.get(String(workspaceId))), CHAT_STORE_NAME);
+  return normalizeAiChat(record?.chat);
+}
+
+export async function saveWorkspaceAiChat(workspaceId, input) {
+  if (!await getWorkspace(workspaceId)) throw new Error("Workspace not found");
+  const chat = normalizeAiChat(input);
+  await withStore("readwrite", (store) => requestResult(store.put({ workspaceId: String(workspaceId), chat })), CHAT_STORE_NAME);
+  return chat;
+}
+
+export async function importWorkspaceAiChat(workspaceId, input) {
+  return saveWorkspaceAiChat(workspaceId, mergeAiChats(await getWorkspaceAiChat(workspaceId), input));
 }
 
 export async function removeWorkspaceItem(id, itemIndex) {

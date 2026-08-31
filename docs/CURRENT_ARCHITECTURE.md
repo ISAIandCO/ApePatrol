@@ -11,7 +11,7 @@ Useful domain knowledge retained during migration:
 - Sysmon 1, Windows 4688 and Linux `execve` process relationships;
 - event export, share link, enrichment, custom filters and IOC description workflows.
 
-## Firefox 3.3 layers
+## Firefox 3.4 layers
 
 ```mermaid
 flowchart TD
@@ -29,13 +29,13 @@ flowchart TD
   M["Firefox managed policy"] -->|"defaults + locks"| B
 ```
 
-- `src/background`: registration lifecycle, allowlisted same-origin read proxy, specialized IOC/Table List mutations, graph session snapshots, bounded/cancellable IOC batch, IndexedDB workspaces, secret-backed external adapters and tab opening.
+- `src/background`: registration lifecycle, allowlisted same-origin read proxy, specialized IOC/Table List mutations, graph/tab-chat session state, bounded/cancellable IOC batch, IndexedDB workspaces and persistent workspace chats, secret-backed external adapters and tab opening.
 - `src/content`: per-instance orchestration, live settings propagation and popup message API.
 - `src/siem/api`: transport-independent client, timeout/cache and typed errors.
 - `src/siem/dom`: R27.3 adapter with cached roots/field index and one debounced multi-root observer controller. Mutation batches incrementally invalidate only changed roots.
 - `src/siem/features`: field actions, related events, IOC, Table Lists and EDR UI.
 - `src/siem/process`: indexed process graph, paged progressive ranges, abort/dedup/limit control, PID time-window protection, local filters and visualization model; `src/process-graph` renders and expands an autonomous snapshot.
-- `src/shared`: settings/migration/profiles, workspace/export, event diff, IOC cache schema, secret separation, PDQL, URL, hash, time, stable error codes, structured logging and exact AI-payload preparation.
+- `src/shared`: settings/migration/profiles, workspace/export, bounded AI-chat state, event diff, IOC cache schema, secret separation, PDQL, URL, hash, time, stable error codes, structured logging and exact multi-turn AI-payload preparation.
 - `src/popup` / `src/options` / `src/workspace`: popup operations, settings/enterprise rollout and persistent analyst workspace rendered with inert DOM APIs.
 
 ## Security invariants

@@ -36,4 +36,17 @@ export function buildEventSearchUrl(origin, where, eventTime, preset = "15m") {
   return new URL(`/#/events/view?${search}`, origin).href;
 }
 
+export function resolveAiRelatedRequest(event, input = {}) {
+  const relation = ["host", "account", "ip", "process"].includes(input.relation) ? input.relation : null;
+  if (!relation) throw new TypeError("Unknown related-event relation");
+  const action = buildRelatedEventActions(event).find((item) => item.group.toLowerCase() === relation);
+  if (!action) throw new Error(`Current event has no ${relation} relation`);
+  return {
+    relation,
+    range: Object.hasOwn(TIME_PRESETS, input.range) ? input.range : "15m",
+    limit: Math.max(1, Math.min(25, Number(input.limit) || 25)),
+    action,
+  };
+}
+
 export { TIME_PRESETS };

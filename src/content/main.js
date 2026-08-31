@@ -11,7 +11,7 @@ import { FieldAliasesFeature } from "../siem/features/field-aliases.js";
 import { IocDescriptionFeature } from "../siem/features/ioc-description.js";
 import { PdqlAutocompleteFeature } from "../siem/features/pdql-autocomplete.js";
 import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
-import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/related-events.js";
+import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildRuleIntelligence } from "../siem/features/rule-intelligence.js";
 import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
@@ -26,6 +26,7 @@ import {
 import { createSiemBackgroundFetch } from "./siem-transport.js";
 import { domSettingsFingerprint, settingsImpact } from "./settings-runtime.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
+import { aroundTime } from "../shared/time.js";
 
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
@@ -34,6 +35,11 @@ const PROCESS_FIELDS = [
   "object.process.name", "object.process.parent.name", "object.process.cmdline", "subject.process.name", "subject.process.cmdline",
   "object.process.path", "subject.process.path", "subject.account.name", "object.account.name",
   "object.account.session_id", "correlation_name",
+];
+const AI_RELATED_FIELDS = [
+  "uuid", "time", "msgid", "event_src.host", "event_src.title", "event_src.category", "category", "severity",
+  "correlation_name", "subject.account.name", "object.account.name", "src.ip", "dst.ip", "object.process.name",
+  "object.process.path", "object.process.cmdline", "object.process.guid", "subject.process.guid", "object.hash",
 ];
 
 async function initialize() {
@@ -91,6 +97,9 @@ async function initialize() {
           }));
           return { ok: true, actions };
         }
+        case "siem:ai-related":
+          if (!settings.features.relatedEvents) return { ok: false, error: "Related events are disabled", kind: "feature-unavailable" };
+          return { ok: true, ...(await fetchAiRelatedEvents(client, event, settings, message.arguments)) };
         case "siem:process":
           if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
           return await buildProcessContext(client, event, settings);
@@ -173,6 +182,23 @@ async function initialize() {
       if (impact.rebuildDom) mountDomFeatures();
     }).catch((error) => console.warn(`[ApePatrol] live settings update failed: ${error.message}`));
   });
+}
+
+async function fetchAiRelatedEvents(client, event, settings, input = {}) {
+  const { relation, range, limit, action } = resolveAiRelatedRequest(event, input);
+  let select;
+  try { select = filterAvailableEventFields(await client.getEventMetadata(), AI_RELATED_FIELDS); }
+  catch { select = AI_RELATED_FIELDS; }
+  const request = (scope) => client.searchEvents({ where: action.where, select, ...aroundTime(event.time, TIME_PRESETS[range]), limit, scope });
+  let response;
+  try {
+    response = await request(processScope(settings));
+  } catch (error) {
+    if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+    response = await request({});
+  }
+  const events = (Array.isArray(response) ? response : Array.isArray(response?.events) ? response.events : []).slice(0, limit);
+  return { relation, range, label: action.label, where: action.where, events, truncated: events.length >= limit };
 }
 
 async function buildProcessContext(client, event, settings) {
