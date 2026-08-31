@@ -23,8 +23,9 @@ describe("AI chat state", () => {
   });
 
   it("drops oversized historical context instead of losing the chat", () => {
+    const largeSnapshot = Object.fromEntries(Array.from({ length: 50 }, (_, index) => [`field-${index}`, "x".repeat(20_000)]));
     const attachments = Array.from({ length: 8 }, (_, index) => ({
-      type: "note", value: String(index), snapshot: { value: "x".repeat(400_000) },
+      type: "note", value: String(index), snapshot: largeSnapshot,
     }));
     const chat = normalizeAiChat({ messages: [{ role: "user", content: "Investigate", attachments }] });
     expect(new TextEncoder().encode(JSON.stringify(chat)).byteLength).toBeLessThanOrEqual(AI_CHAT_MAX_BYTES);
