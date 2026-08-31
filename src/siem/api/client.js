@@ -35,6 +35,21 @@ async function responseErrorDetail(response) {
   return errorDetail(text, response.headers.get("content-type") ?? "");
 }
 
+function apiTime(value) {
+  if (value === undefined || value === null) return value;
+  if (typeof value === "number") return value;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) throw new TypeError("Invalid SIEM event search time range");
+  return Math.floor(timestamp / 1000);
+}
+
+export function filterAvailableEventFields(metadata, requested) {
+  if (!Array.isArray(metadata?.fields)) return [...new Set(requested)];
+  const available = new Set(metadata.fields.filter((field) => field?.filterable === true).map((field) => field.name));
+  const selected = [...new Set(requested)].filter((field) => available.has(field) || field === "time" || field === "subevents");
+  return selected.length ? selected : [...new Set(requested)];
+}
+
 function canRetryWithXhr(method, path) {
   if (method === "GET") return true;
   if (method !== "POST") return false;
@@ -173,7 +188,7 @@ export class SiemApiClient {
       top: null,
       aliases: {},
     };
-    const body = { filter, groupValues: null, timeFrom, timeTo };
+    const body = { filter, groupValues: null, timeFrom: apiTime(timeFrom), timeTo: apiTime(timeTo) };
     for (const key of ["searchType", "searchSources", "localSources", "groupIds"]) {
       if (scope[key] !== undefined && scope[key] !== null) body[key] = scope[key];
     }

@@ -1,6 +1,6 @@
 import { createLogger } from "../shared/logger.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
-import { SiemApiClient } from "../siem/api/client.js";
+import { filterAvailableEventFields, SiemApiClient } from "../siem/api/client.js";
 import { detectCapabilities } from "../siem/api/capabilities.js";
 import { SiemDomController } from "../siem/dom/controller.js";
 import { SiemDomAdapter } from "../siem/dom/r27_3.js";
@@ -152,7 +152,7 @@ async function initialize() {
   });
 
   browser.storage.onChanged.addListener((changes, area) => {
-    if (!((area === "sync" && changes[SYNC_STORAGE_KEY]) || area === "managed")) return;
+    if (!((area === "local" && changes[SYNC_STORAGE_KEY]) || area === "managed")) return;
     Promise.resolve().then(async () => {
       const response = await browser.runtime.sendMessage({ type: "settings:get" });
       if (!response?.ok) throw new Error(response?.error ?? "Live settings are unavailable");
@@ -178,8 +178,9 @@ async function buildProcessContext(client, event, settings) {
   if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
   const where = buildProcessSearchPredicate(host);
   const range = seedProcessRange(event.time, settings.process.seedWindowSeconds);
+  const select = await processFields(client);
   const request = (requestScope) => fetchProcessPages(client, {
-    where, select: PROCESS_FIELDS, ...range, scope: requestScope,
+    where, select, ...range, scope: requestScope,
   }, { pageSize: settings.process.pageSize, maxEvents: settings.process.maxNodes });
   let result;
   try {
@@ -222,6 +223,14 @@ function processScope(settings) {
   } : settings.searchScope.mode === "all" ? { searchType: "all" } : {};
 }
 
+async function processFields(client) {
+  try {
+    return filterAvailableEventFields(await client.getEventMetadata(), PROCESS_FIELDS);
+  } catch {
+    return PROCESS_FIELDS;
+  }
+}
+
 async function expandProcessContext(client, currentEvent, settings, message, signal) {
   const sourceEvent = message.sourceEvent && typeof message.sourceEvent === "object" ? message.sourceEvent : currentEvent;
   const host = sourceEvent["event_src.host"];
@@ -237,7 +246,7 @@ async function expandProcessContext(client, currentEvent, settings, message, sig
   const ranges = remaining ? requestedRanges : [];
   let results = [];
   if (remaining) {
-    const query = { where: buildProcessSearchPredicate(host), select: PROCESS_FIELDS, scope: processScope(settings) };
+    const query = { where: buildProcessSearchPredicate(host), select: await processFields(client), scope: processScope(settings) };
     const request = (requestQuery) => runProcessRangeQueries(client, ranges, requestQuery, {
       concurrency: settings.process.queryConcurrency,
       pageSize: settings.process.pageSize,

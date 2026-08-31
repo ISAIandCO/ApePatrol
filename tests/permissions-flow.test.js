@@ -11,8 +11,8 @@ describe("Firefox external data consent flow", () => {
 
   it("does not make saving a key depend on a permission prompt", async () => {
     const source = await readFile(new URL("../src/options/options.js", import.meta.url), "utf8");
-    const saveBody = source.match(/async function save\(\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    expect(saveBody).toContain('type: "secrets:save"');
-    expect(saveBody).not.toContain("permissions.request");
+    const secretSaveBody = source.match(/async function saveSecrets[\s\S]*?\n\}\n\nasync function exportProfile/)?.[0] ?? "";
+    expect(secretSaveBody).toContain('type: "secrets:save"');
+    expect(secretSaveBody).not.toContain("permissions.request");
   });
 });

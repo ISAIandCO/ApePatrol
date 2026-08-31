@@ -24,13 +24,23 @@ async function resolveSettings(userSettings, overridePaths = []) {
 }
 
 export async function loadSettings() {
-  const stored = await browser.storage.sync.get([SYNC_STORAGE_KEY, LEGACY_SYNC_STORAGE_KEY, "options", MANAGED_OVERRIDE_PATHS_KEY]);
-  const overridePaths = stored[MANAGED_OVERRIDE_PATHS_KEY];
-  if (stored[SYNC_STORAGE_KEY]) return (await resolveSettings(stored[SYNC_STORAGE_KEY], overridePaths)).settings;
+  const [local, stored] = await Promise.all([
+    browser.storage.local.get([SYNC_STORAGE_KEY, MANAGED_OVERRIDE_PATHS_KEY]),
+    browser.storage.sync.get([SYNC_STORAGE_KEY, LEGACY_SYNC_STORAGE_KEY, "options", MANAGED_OVERRIDE_PATHS_KEY]),
+  ]);
+  const overridePaths = local[MANAGED_OVERRIDE_PATHS_KEY] ?? stored[MANAGED_OVERRIDE_PATHS_KEY];
+  if (local[SYNC_STORAGE_KEY]) return (await resolveSettings(local[SYNC_STORAGE_KEY], overridePaths)).settings;
+  if (stored[SYNC_STORAGE_KEY]) {
+    await Promise.all([
+      browser.storage.local.set({ [SYNC_STORAGE_KEY]: stored[SYNC_STORAGE_KEY], [MANAGED_OVERRIDE_PATHS_KEY]: overridePaths ?? [] }),
+      browser.storage.sync.remove([SYNC_STORAGE_KEY, MANAGED_OVERRIDE_PATHS_KEY]),
+    ]);
+    return (await resolveSettings(stored[SYNC_STORAGE_KEY], overridePaths)).settings;
+  }
   if (stored[LEGACY_SYNC_STORAGE_KEY]) {
     const migrated = normalizeSettings(stored[LEGACY_SYNC_STORAGE_KEY]);
     await Promise.all([
-      browser.storage.sync.set({ [SYNC_STORAGE_KEY]: migrated }),
+      browser.storage.local.set({ [SYNC_STORAGE_KEY]: migrated, [MANAGED_OVERRIDE_PATHS_KEY]: overridePaths ?? [] }),
       browser.storage.sync.remove(LEGACY_SYNC_STORAGE_KEY),
     ]);
     return (await resolveSettings(migrated, overridePaths)).settings;
@@ -38,14 +48,13 @@ export async function loadSettings() {
   if (stored.options) {
     const migrated = migrateLegacySettings(stored);
     await Promise.all([
-      browser.storage.sync.set({ [SYNC_STORAGE_KEY]: migrated.settings }),
-      browser.storage.local.set({ [LOCAL_SECRETS_KEY]: migrated.secrets }),
+      browser.storage.local.set({ [SYNC_STORAGE_KEY]: migrated.settings, [LOCAL_SECRETS_KEY]: migrated.secrets, [MANAGED_OVERRIDE_PATHS_KEY]: overridePaths ?? [] }),
       browser.storage.sync.remove("options"),
     ]);
     return (await resolveSettings(migrated.settings, overridePaths)).settings;
   }
   const settings = normalizeSettings();
-  await browser.storage.sync.set({ [SYNC_STORAGE_KEY]: settings });
+  await browser.storage.local.set({ [SYNC_STORAGE_KEY]: settings, [MANAGED_OVERRIDE_PATHS_KEY]: [] });
   return (await resolveSettings(settings, overridePaths)).settings;
 }
 
@@ -57,11 +66,11 @@ export async function loadSettingsState() {
 
 export async function saveSettings(input) {
   const [stored, policy] = await Promise.all([
-    browser.storage.sync.get([SYNC_STORAGE_KEY, MANAGED_OVERRIDE_PATHS_KEY]),
+    browser.storage.local.get([SYNC_STORAGE_KEY, MANAGED_OVERRIDE_PATHS_KEY]),
     loadManagedPolicy(),
   ]);
   const prepared = prepareManagedSettingsSave(input, stored[SYNC_STORAGE_KEY], policy, stored[MANAGED_OVERRIDE_PATHS_KEY]);
-  await browser.storage.sync.set({ [SYNC_STORAGE_KEY]: prepared.userSettings, [MANAGED_OVERRIDE_PATHS_KEY]: prepared.overridePaths });
+  await browser.storage.local.set({ [SYNC_STORAGE_KEY]: prepared.userSettings, [MANAGED_OVERRIDE_PATHS_KEY]: prepared.overridePaths });
   return applyManagedPolicy(prepared.userSettings, policy, prepared.overridePaths).settings;
 }
 

@@ -187,32 +187,44 @@ function collectSettings() {
 
 async function save() {
   const settings = collectSettings();
+  const secrets = collectSecrets();
+  const settingsResponse = await browser.runtime.sendMessage({ type: "settings:save", settings });
+  if (!settingsResponse.ok) throw new Error(settingsResponse.error);
+  if (Object.keys(secrets).length) await saveSecrets(secrets);
+  state.settings = settingsResponse.settings;
+  setStatus("Settings saved. Dynamic SIEM registrations refreshed.");
+}
+
+function collectSecrets() {
   const vtKey = byId("vt-api-key").value.trim();
   const abuseIpDbKey = byId("abuseipdb-api-key").value.trim();
   const openTipKey = byId("opentip-api-key").value.trim();
   const threatFoxKey = byId("threatfox-api-key").value.trim();
   const llmKey = byId("ai-api-key").value.trim();
-  const settingsResponse = await browser.runtime.sendMessage({ type: "settings:save", settings });
-  if (!settingsResponse.ok) throw new Error(settingsResponse.error);
   const secrets = {};
   if (vtKey) secrets.virusTotalApiKey = vtKey;
   if (abuseIpDbKey) secrets.abuseIpDbApiKey = abuseIpDbKey;
   if (openTipKey) secrets.openTipApiKey = openTipKey;
   if (threatFoxKey) secrets.threatFoxApiKey = threatFoxKey;
   if (llmKey) secrets.llmApiKey = llmKey;
-  if (Object.keys(secrets).length) {
-    const secretResponse = await browser.runtime.sendMessage({ type: "secrets:save", secrets });
-    if (!secretResponse.ok) throw new Error(secretResponse.error);
-  }
-  state.settings = settingsResponse.settings;
+  return secrets;
+}
+
+async function saveSecrets(secrets = collectSecrets()) {
+  if (!Object.keys(secrets).length) throw new Error("Введите хотя бы один API-ключ");
+  const secretResponse = await browser.runtime.sendMessage({ type: "secrets:save", secrets });
+  if (!secretResponse.ok) throw new Error(secretResponse.error);
   byId("vt-api-key").value = "";
   byId("abuseipdb-api-key").value = "";
   byId("opentip-api-key").value = "";
   byId("threatfox-api-key").value = "";
   byId("ai-api-key").value = "";
-  state.secretStatus = { ...state.secretStatus, virusTotal: state.secretStatus.virusTotal || Boolean(vtKey), abuseIpDb: state.secretStatus.abuseIpDb || Boolean(abuseIpDbKey), openTip: state.secretStatus.openTip || Boolean(openTipKey), threatFox: state.secretStatus.threatFox || Boolean(threatFoxKey), llm: state.secretStatus.llm || Boolean(llmKey) };
-  renderSettings();
-  setStatus("Settings saved. Dynamic SIEM registrations refreshed.");
+  state.secretStatus = { ...state.secretStatus, virusTotal: state.secretStatus.virusTotal || Boolean(secrets.virusTotalApiKey), abuseIpDb: state.secretStatus.abuseIpDb || Boolean(secrets.abuseIpDbApiKey), openTip: state.secretStatus.openTip || Boolean(secrets.openTipApiKey), threatFox: state.secretStatus.threatFox || Boolean(secrets.threatFoxApiKey), llm: state.secretStatus.llm || Boolean(secrets.llmApiKey) };
+  byId("vt-status").textContent = state.secretStatus.virusTotal ? "An API key is stored locally. Enter a new value only to replace it." : "No API key stored.";
+  byId("abuseipdb-status").textContent = state.secretStatus.abuseIpDb ? "API-ключ сохранён локально." : "API-ключ не задан.";
+  byId("opentip-status").textContent = state.secretStatus.openTip ? "API-токен сохранён локально." : "API-токен не задан.";
+  byId("threatfox-status").textContent = state.secretStatus.threatFox ? "Auth-Key сохранён локально." : "Auth-Key не задан.";
+  byId("ai-status").textContent = state.secretStatus.llm ? "An API key is stored locally. Enter a new value only to replace it." : "No API key stored.";
 }
 
 async function exportProfile() {
@@ -238,6 +250,7 @@ async function importProfile() {
 
 byId("add-instance").addEventListener("click", () => addInstance().catch((error) => setStatus(error.message, true)));
 byId("save").addEventListener("click", () => save().catch((error) => setStatus(error.message, true)));
+byId("save-ioc-keys").addEventListener("click", () => saveSecrets().then(() => setStatus("API-ключи сохранены локально.")).catch((error) => setStatus(error.message, true)));
 byId("grant-data-permission").addEventListener("click", () => grantDataPermission().catch((error) => setStatus(error.message, true)));
 for (const provider of Object.keys(IOC_API_ORIGINS)) byId(`grant-${provider}`).addEventListener("click", () => grantProviderAccess(provider).catch((error) => setStatus(error.message, true)));
 byId("grant-ai-endpoint").addEventListener("click", () => grantAiEndpoint().catch((error) => setStatus(error.message, true)));
