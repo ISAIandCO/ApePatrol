@@ -27,9 +27,9 @@
       <button data-expand="siblings">Expand siblings</button>
       <button data-expand="previous">← Предыдущий интервал</button>
       <button data-expand="next">Следующий интервал →</button>
-      <label>Шаг <select id="expand-step"><option value="900">15 минут</option><option value="3600" selected>1 час</option><option value="21600">6 часов</option><option value="86400">24 часа</option></select></label>
+      <label>Шаг <select id="expand-step"><option value="900" selected>15 минут</option><option value="3600">1 час</option><option value="21600">6 часов</option><option value="86400">24 часа</option></select></label>
       <button id="cancel-expand" disabled>Отменить загрузку</button>
-      <button id="continue-limit" hidden>Разрешить ещё узлы</button>
+      <button id="continue-limit" hidden>Снять лимит до 10 000 узлов</button>
     </div>
     <div class="range-controls"><strong id="graph-range">Диапазон не загружен</strong><span id="partial-indicator">Частичный граф</span><label>Начало видимого диапазона <input id="time-slider-start" type="range" min="0" max="100" value="0"></label><label>Конец видимого диапазона <input id="time-slider-end" type="range" min="0" max="100" value="100"></label><span id="time-slider-label"></span></div>
   </section>

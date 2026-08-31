@@ -9,6 +9,7 @@ import { getAssetContext } from "../siem/features/asset-enrichment.js";
 import { EventFieldActions } from "../siem/features/event-actions.js";
 import { FieldAliasesFeature } from "../siem/features/field-aliases.js";
 import { IocDescriptionFeature } from "../siem/features/ioc-description.js";
+import { PdqlAutocompleteFeature } from "../siem/features/pdql-autocomplete.js";
 import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
@@ -62,6 +63,7 @@ async function initialize() {
       new FieldAliasesFeature(settings.fieldAliases),
       new EdrUiFeature(settings.features.disableEdrIntegration),
       new IocDescriptionFeature(client, settings, logger),
+      new PdqlAutocompleteFeature(client),
     ]);
     domFingerprint = nextFingerprint;
     controller.start();
@@ -205,6 +207,7 @@ async function buildProcessContext(client, event, settings) {
       loadedRanges: [{ from: range.timeFrom, to: range.timeTo }],
       maxNodes: settings.process.maxNodes,
       pageSize: settings.process.pageSize,
+      expansionStepSeconds: settings.process.expansionStepSeconds,
       pages: result.pages,
       pendingRanges: result.limitReached ? [{ direction: "seed", ...range, offset: result.nextOffset }] : [],
       partial: true,

@@ -233,7 +233,7 @@ export class SiemDomAdapter {
     return header?.textContent?.trim().replace(",", "") || null;
   }
   getEventUuid() { return this.getEventField("uuid"); }
-  getFilterEditor() { return queryDeep("textarea[data-testid*='filter'], pdql-editor textarea, [class*='filter-editor'] textarea", this.getRoot()); }
+  getFilterEditor() { return queryDeep("textarea#pdqlFilterText, events-filter-popover textarea, textarea[data-testid*='filter'], pdql-editor textarea, [class*='filter-editor'] textarea", this.getRoot()); }
   getRuleCard() { return queryDeep("[data-testid*='correlation-rule'], [class*='correlation-rule']", this.getEventCard() ?? this.getRoot()); }
   getAssetFields() { return queryDeep("[data-testid*='asset'], [class*='asset']", this.getEventCard() ?? this.getRoot()); }
 

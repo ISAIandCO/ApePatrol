@@ -575,6 +575,8 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
   state.stale = stale;
   state.snapshotCreatedAt = snapshotCreatedAt;
   state.nodeLimit = Number(response.queryMetadata?.maxNodes) || state.nodeLimit;
+  const expansionStep = String(response.queryMetadata?.expansionStepSeconds ?? "");
+  if ([...byId("expand-step").options].some((option) => option.value === expansionStep)) byId("expand-step").value = expansionStep;
   byId("loading").hidden = true;
   byId("empty").hidden = state.nodes.length > 0;
   canvas.hidden = state.nodes.length === 0;
@@ -626,12 +628,12 @@ async function persistCurrentSnapshot() {
   if (!saved?.ok) throw new Error(saved?.error ?? "Не удалось обновить снимок графа");
 }
 
-async function expandGraph(direction, { increaseLimit = false, resumeLimit = false } = {}) {
+async function expandGraph(direction, { nodeLimit = state.nodeLimit, resumeLimit = false } = {}) {
   if (state.activeRequestId) return;
   if (!Number.isInteger(sourceTabId) || sourceTabId <= 0 || state.stale) throw new Error("Сначала подключите доступную SIEM-вкладку");
   const requestId = crypto.randomUUID();
   state.activeRequestId = requestId;
-  if (increaseLimit) state.nodeLimit = Math.min(10_000, state.nodeLimit + Math.max(1000, Number(state.response?.queryMetadata?.pageSize) || 250));
+  state.nodeLimit = Math.min(10_000, Math.max(state.nodeLimit, Number(nodeLimit) || state.nodeLimit));
   updateExpansionUi();
   byId("loading").hidden = false;
   setStatus("Подгружаю дополнительный контекст процессов…");
@@ -755,7 +757,7 @@ for (const button of document.querySelectorAll("[data-expand]")) {
   button.addEventListener("click", () => expandGraph(button.dataset.expand).catch((error) => setStatus(error.message, true)));
 }
 byId("cancel-expand").addEventListener("click", () => cancelExpansion().catch((error) => setStatus(error.message, true)));
-byId("continue-limit").addEventListener("click", () => expandGraph(state.response?.queryMetadata?.lastDirection ?? "both", { increaseLimit: true, resumeLimit: true }).catch((error) => setStatus(error.message, true)));
+byId("continue-limit").addEventListener("click", () => expandGraph(state.response?.queryMetadata?.lastDirection ?? "both", { nodeLimit: 10_000, resumeLimit: true }).catch((error) => setStatus(error.message, true)));
 byId("process-search").addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
   scheduleDraw();
