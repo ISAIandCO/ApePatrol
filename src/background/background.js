@@ -6,16 +6,19 @@ import { IOC_API_PROVIDERS, lookupIoc } from "./ioc-enrichment.js";
 import { setIocDescription } from "./ioc-description.js";
 import { applyTableListMutation } from "./table-list.js";
 import { deleteGraphSnapshot, getGraphSnapshot, saveGraphSnapshot, updateGraphSnapshot } from "./graph-snapshots.js";
-import { prepareAiRequest } from "../shared/ai-payload.js";
+import { normalizeAiToolCalls, prepareAiRequest } from "../shared/ai-payload.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 import { cancelIocBatch, runIocBatch } from "./ioc-batch.js";
 import {
   createInvestigation,
   deleteWorkspace,
+  getWorkspaceAiChat,
   getWorkspace,
+  importWorkspaceAiChat,
   listWorkspaces,
   pinWorkspaceItem,
   removeWorkspaceItem,
+  saveWorkspaceAiChat,
   updateWorkspace,
 } from "./workspaces.js";
 
@@ -78,7 +81,13 @@ async function llmRequest(message) {
   if (!endpoint || !settings.ai.model || !secrets.llmApiKey) throw new Error("AI endpoint, model, or key is not configured");
   if (!await browser.permissions.contains({ origins: [`${endpoint.origin}/*`] })) throw new Error("AI endpoint host permission is missing");
   if (!await hasDataPermission(["websiteContent", "authenticationInfo"])) throw new Error("Firefox data-collection permission is missing");
-  const prepared = await prepareAiRequest(message.event, settings.ai, { selectedFields: message.selectedFields });
+  const requestOptions = {
+    selectedFields: message.selectedFields,
+    conversation: message.conversation,
+    contextType: message.contextType,
+    allowSiemTools: message.allowSiemTools,
+  };
+  const prepared = await prepareAiRequest(message.event, settings.ai, requestOptions);
   if (!message.previewHash || message.previewHash !== prepared.hash) throw new Error("AI preview is stale; review the final payload again");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
@@ -91,9 +100,11 @@ async function llmRequest(message) {
     });
     if (!response.ok) throw new Error(`LLM endpoint returned HTTP ${response.status}`);
     const body = await response.json();
-    const content = body?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") throw new Error("Unexpected LLM response schema");
-    return { content: content.slice(0, 100000), sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
+    const responseMessage = body?.choices?.[0]?.message;
+    const content = typeof responseMessage?.content === "string" ? responseMessage.content.slice(0, 100000) : "";
+    const toolCalls = normalizeAiToolCalls(responseMessage, message.contextType);
+    if (!content && !toolCalls.length) throw new Error("Unexpected LLM response schema");
+    return { content, toolCalls, sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
   } finally {
     clearTimeout(timer);
   }
@@ -106,6 +117,7 @@ browser.permissions.onRemoved.addListener(() => refreshRegistrations().catch(con
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === "managed" && Object.keys(changes).length) refreshRegistrations().catch(console.error);
 });
+browser.tabs.onRemoved.addListener((tabId) => browser.storage.session.remove(`apepatrol-popup-tab:${tabId}`).catch(console.error));
 
 browser.runtime.onMessage.addListener(async (message, sender) => {
   try {
@@ -182,7 +194,12 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         if (!settings.features.aiAssistant) throw new Error("AI assistant is disabled");
         const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
         if (!endpoint || !settings.ai.model) throw new Error("AI endpoint or model is not configured");
-        return { ok: true, endpoint: endpoint.origin, preview: await prepareAiRequest(message.event, settings.ai, { selectedFields: message.selectedFields }) };
+        return { ok: true, endpoint: endpoint.origin, preview: await prepareAiRequest(message.event, settings.ai, {
+          selectedFields: message.selectedFields,
+          conversation: message.conversation,
+          contextType: message.contextType,
+          allowSiemTools: message.allowSiemTools,
+        }) };
       }
       case "workspace:list":
         assertExtensionPage(sender);
@@ -202,6 +219,15 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
       case "workspace:item:remove":
         assertExtensionPage(sender);
         return { ok: true, workspace: await removeWorkspaceItem(message.id, message.index) };
+      case "workspace:chat:get":
+        assertExtensionPage(sender);
+        return { ok: true, chat: await getWorkspaceAiChat(message.id) };
+      case "workspace:chat:save":
+        assertExtensionPage(sender);
+        return { ok: true, chat: await saveWorkspaceAiChat(message.id, message.chat) };
+      case "workspace:chat:import":
+        assertExtensionPage(sender);
+        return { ok: true, chat: await importWorkspaceAiChat(message.id, message.chat) };
       case "workspace:item:add": {
         const extensionSender = isExtensionPageSender(sender, browser.runtime.getURL("/"));
         const siemSender = !extensionSender && await senderIsConfiguredSiem(sender);

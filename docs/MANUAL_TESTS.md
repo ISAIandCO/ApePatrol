@@ -95,5 +95,10 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] LLM response `<img src=x onerror=alert(1)>` remains inert text.
 - [ ] AI preview показывает точное финальное JSON-тело, реальный UTF-8 byte count и endpoint; Authorization/API key в preview отсутствует.
 - [ ] Selected fields, strict allowlist, redacted и full дают ожидаемые разные payload; full показывает отдельное предупреждение.
+- [ ] Закрытие и повторное открытие popup в той же SIEM-вкладке сохраняет AI-диалог, черновик и выбранный раздел; переход на другое событие не сбрасывает диалог.
+- [ ] «Добавить текущее событие» прикладывает новое событие к следующему сообщению без дубликатов; закрытие SIEM-вкладки удаляет её session-диалог.
+- [ ] AI tool call только показывает read-only запрос; до подтверждения сетевой запрос к SIEM не выполняется, а результат не отправляется LLM до нового preview и подтверждения.
+- [ ] «Перенести диалог» открывает выбранный Investigation Workspace; повторный перенос не дублирует сообщения.
+- [ ] AI-диалог Workspace сохраняется после закрытия вкладки расширения, умеет прикладывать отмеченные объекты/заметки и удаляется вместе с Workspace.
 - [ ] Изменение события/выбранных полей после preview приводит к stale-preview отказу, пока preview не создан заново.
 - [ ] 401/403/404, invalid JSON, timeout and network failure show distinct safe errors.

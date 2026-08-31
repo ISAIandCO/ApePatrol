@@ -25,6 +25,13 @@ textarea, select { width: 100%; margin: 6px 0; padding: 6px; } .danger { border-
 #ai-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; max-height: 180px; overflow: auto; margin: 8px 0; }
 #ai-fields label { overflow-wrap: anywhere; }
 #ai-preview-meta { white-space: pre-wrap; }
+#ai-chat-messages { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin: 10px 0; }
+.ai-message { padding: 8px 10px; border: 1px solid color-mix(in srgb, CanvasText 14%, transparent); border-radius: 7px; background: color-mix(in srgb, CanvasText 5%, Canvas); }
+.ai-message.assistant { border-color: color-mix(in srgb, #665cc7 55%, transparent); }.ai-message p { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }.ai-attachments span { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px; border-radius: 999px; background: color-mix(in srgb, #2b79c2 15%, Canvas); overflow-wrap: anywhere; }.ai-attachments span button { border: 0; padding: 0 2px; background: transparent; }
+.inline-choice { display: flex; align-items: center; gap: 6px; margin: 8px 0; }.inline-choice input { width: auto; }
+#ai-tool-requests { margin: 9px 0; padding: 9px; border: 1px solid #b88928; border-radius: 7px; background: color-mix(in srgb, #d6a62f 12%, Canvas); } #ai-tool-requests ul { margin: 6px 0; padding-left: 20px; }
+.ai-promote { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; }.ai-promote select { margin: 0; }
 .choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; max-height: 150px; overflow: auto; margin: 7px 0 12px; }
 .choice-list label { overflow-wrap: anywhere; }
 #batch-preview-output, #batch-results { max-height: 260px; overflow: auto; margin-top: 8px; }

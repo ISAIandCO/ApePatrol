@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareAiRequest } from "../src/shared/ai-payload.js";
+import { normalizeAiToolCalls, prepareAiRequest } from "../src/shared/ai-payload.js";
 
 function settings(overrides = {}) {
   return {
@@ -50,5 +50,31 @@ describe("AI privacy preview", () => {
     const first = await prepareAiRequest({ uuid: "one" }, settings(), { selectedFields: ["uuid"] });
     const second = await prepareAiRequest({ uuid: "two" }, settings(), { selectedFields: ["uuid"] });
     expect(first.hash).not.toBe(second.hash);
+  });
+
+  it("builds an exact multi-turn request with attached events and optional tools", async () => {
+    const result = await prepareAiRequest({}, settings(), {
+      selectedFields: ["uuid"],
+      contextType: "tab",
+      allowSiemTools: true,
+      conversation: [
+        { role: "user", content: "Compare", attachments: [{ type: "event", value: "one", label: "One", snapshot: { uuid: "one", password: "no" } }] },
+        { role: "assistant", content: "Need another event" },
+        { role: "user", content: "Here", attachments: [{ type: "event", value: "two", label: "Two", snapshot: { uuid: "two" } }] },
+      ],
+    });
+    expect(result.body.messages).toHaveLength(4);
+    expect(result.body.tools.map((tool) => tool.function.name)).toContain("get_related_events");
+    expect(result.serialized).toContain("one");
+    expect(result.serialized).not.toContain("password");
+  });
+
+  it("accepts only known, valid tool calls", () => {
+    const calls = normalizeAiToolCalls({ tool_calls: [
+      { id: "1", function: { name: "get_asset_context", arguments: "{}" } },
+      { id: "2", function: { name: "delete_incident", arguments: "{}" } },
+      { id: "3", function: { name: "get_rule_context", arguments: "not-json" } },
+    ] }, "tab");
+    expect(calls).toEqual([{ id: "1", name: "get_asset_context", arguments: {} }]);
   });
 });

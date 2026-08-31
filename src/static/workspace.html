@@ -17,6 +17,17 @@
       <label>Заметки аналитика <textarea id="workspace-notes" rows="8"></textarea></label>
       <h2>Прикреплённые объекты</h2><div id="workspace-items"></div>
       <section id="compare-panel" hidden><h2>Event Compare</h2><p id="compare-summary"></p><div class="actions"><button id="copy-compare-json">Copy diff as JSON</button><button id="copy-compare-markdown">Copy diff as Markdown</button></div><div class="table-scroll"><table><thead><tr><th>Group</th><th>Field</th><th>Status</th><th>Event 1</th><th>Event 2</th><th id="compare-event-3">Event 3</th></tr></thead><tbody id="compare-body"></tbody></table></div></section>
+      <section id="workspace-ai">
+        <h2>SEC AI Assistant</h2><p>Постоянный диалог этого расследования. Перед каждой внешней отправкой ApePatrol показывает точный payload.</p>
+        <div id="workspace-ai-messages" aria-live="polite"></div>
+        <div class="actions"><button id="workspace-ai-add-selected">Добавить отмеченные «в AI» объекты</button><button id="workspace-ai-add-notes">Добавить заметки аналитика</button><button id="workspace-ai-clear" class="danger">Очистить AI-диалог</button></div>
+        <h3>Контекст следующего сообщения</h3><div id="workspace-ai-context" class="workspace-ai-attachments"></div>
+        <label>Сообщение<textarea id="workspace-ai-message" rows="4" placeholder="Что нужно проверить в рамках расследования?"></textarea></label>
+        <label class="inline-choice"><input id="workspace-ai-tools" type="checkbox"> Разрешить AI запрашивать дополнительные прикреплённые объекты с отдельным подтверждением</label>
+        <div id="workspace-ai-tool-requests" hidden></div>
+        <div class="actions"><button id="workspace-ai-preview">Сформировать точный payload</button><button id="workspace-ai-run" disabled>Отправить проверенный payload</button></div>
+        <p id="workspace-ai-preview-meta"></p><details><summary>Точный внешний payload</summary><pre id="workspace-ai-preview-output"></pre></details>
+      </section>
     </section>
   </main>
   <script src="workspace.js"></script>

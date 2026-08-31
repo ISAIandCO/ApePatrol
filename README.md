@@ -8,7 +8,7 @@ ApePatrol — расширение-компаньон для расследов�
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.3.2
+## Возможности ApePatrol 3.4.0
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
@@ -20,14 +20,16 @@ ApePatrol — независимый open-source проект. Он не свя�
 - 48 встроенных русскоязычных PDQL-фильтров с описаниями и проверкой доступных полей;
 - IOC-проверки из иконки у конкретного поля: VirusTotal, AbuseIPDB, Kaspersky OpenTIP и ThreatFox API, а также безопасные ссылки на Shodan, GreyNoise, MalwareBazaar, URLhaus и другие отчёты;
 - подтверждаемый Batch IOC enrichment с preview, независимыми partial results, bounded concurrency/backoff, обработкой HTTP 429, retry выбранного провайдера, cancel и локальным TTL cache без API-ключей;
-- локальный Investigation Workspace в IndexedDB: события, процессы, IOC, hosts, accounts, incident references, заметки, теги, поиск, сортировка и JSON/Markdown export;
+- локальный Investigation Workspace в IndexedDB: события, процессы, IOC, hosts, accounts, incident references, заметки, теги, поиск, сортировка, JSON/Markdown export и отдельный постоянный SEC AI Assistant;
 - Event Compare для 2–3 сохранённых событий с группами process/network/account/host/rule/raw и копированием diff в JSON/Markdown;
 - Rule Intelligence с rule metadata, KB/references и только явными MITRE ATT&CK mappings из SIEM;
 - Enterprise Profiles: versioned import/export non-secret settings, merge/replace validation и Firefox `storage.managed` defaults/locks;
 - опциональное описание IOC через специализированную подтверждаемую SIEM-операцию без перехвата `fetch`/XHR;
 - скрытие EDR UI без блокирования XHR/fetch;
 - live-применение feature toggles, IOC-провайдеров, aliases, filters и process limits к уже открытой SIEM-вкладке;
-- AI privacy preview: точное финальное тело OpenAI-compatible запроса, реальный UTF-8 размер, выбранные поля/strict allowlist/redacted/full режимы, локальные эвристические предупреждения и защита от изменения payload после preview.
+- SEC AI chat: один session-диалог на вкладку SIEM с несколькими явно прикладываемыми событиями, переносом в Workspace и постоянным диалогом расследования;
+- AI privacy preview: точное финальное тело OpenAI-compatible запроса, реальный UTF-8 размер, выбранные поля/strict allowlist/redacted/full режимы, локальные эвристические предупреждения и защита от изменения payload после preview;
+- подтверждаемые read-only AI tools: связанные события, процессы, актив/EDR и правило корреляции в живой SIEM-вкладке, а также выбор прикреплённых объектов Workspace — без произвольных URL, PDQL и мутаций.
 
 ## Разрешения
 
