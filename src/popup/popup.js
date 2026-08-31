@@ -452,7 +452,7 @@ byId("ai-run").addEventListener("click", async () => {
 });
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (!state.settings || !state.context || !((area === "sync" && changes[SYNC_STORAGE_KEY]) || area === "managed")) return;
+  if (!state.settings || !state.context || !((area === "local" && changes[SYNC_STORAGE_KEY]) || area === "managed")) return;
   browser.runtime.sendMessage({ type: "settings:get" }).then((response) => {
     if (!response?.ok) return;
     state.settings = normalizeSettings(response.settings);

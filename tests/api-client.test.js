@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SiemApiClient, SiemApiError } from "../src/siem/api/client.js";
+import { filterAvailableEventFields, SiemApiClient, SiemApiError } from "../src/siem/api/client.js";
 
 describe("SIEM API client", () => {
   it("matches the MP SIEM JSON request shape and charset", async () => {
@@ -23,6 +23,18 @@ describe("SIEM API client", () => {
       timeFrom: 100,
       timeTo: 200,
     });
+  });
+
+  it("converts ISO graph ranges to MP SIEM epoch seconds", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ events: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    const client = new SiemApiClient("https://siem.example", { fetchImpl });
+    await client.searchEvents({ where: "msgid = 1", select: ["uuid"], timeFrom: "2026-01-01T00:00:00.000Z", timeTo: "2026-01-01T00:15:00.000Z" });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({ timeFrom: 1767225600, timeTo: 1767226500 });
+  });
+
+  it("keeps only taxonomy fields accepted by the event endpoint", () => {
+    const metadata = { fields: [{ name: "uuid", filterable: true }, { name: "time", filterable: false }, { name: "object.process.id", filterable: true }] };
+    expect(filterAvailableEventFields(metadata, ["uuid", "time", "missing", "object.process.id"])).toEqual(["uuid", "time", "object.process.id"]);
   });
 
   it("preserves a concise JSON server error", async () => {

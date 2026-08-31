@@ -13,7 +13,7 @@ describe("ApePatrol storage migration", () => {
     globalThis.browser = {
       storage: {
         sync: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
-        local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
+        local: { get: vi.fn().mockResolvedValue({}), set: vi.fn(), remove: vi.fn() },
       },
     };
   });
@@ -31,7 +31,7 @@ describe("ApePatrol storage migration", () => {
     expect(migrated.instances).toEqual(["https://siem.example"]);
     expect(migrated.customFilters.find((filter) => filter.id === "custom")?.template).toBe("uuid = ${uuid}");
     expect(migrated.externalProviders.find((provider) => provider.id === "hash")?.urlTemplate).toBe("https://example.test/${hash}");
-    expect(browser.storage.sync.set).toHaveBeenCalledWith({ [SYNC_STORAGE_KEY]: migrated });
+    expect(browser.storage.local.set).toHaveBeenCalledWith(expect.objectContaining({ [SYNC_STORAGE_KEY]: migrated }));
     expect(browser.storage.sync.remove).toHaveBeenCalledWith(LEGACY_SYNC_STORAGE_KEY);
   });
 
@@ -53,10 +53,10 @@ describe("ApePatrol storage migration", () => {
     browser.storage.managed = { get: vi.fn().mockResolvedValue({
       settingsProfile: JSON.stringify({ defaults: { features: { batchIoc: false } }, lockedPaths: ["features.batchIoc"] }),
     }) };
-    browser.storage.sync.get.mockResolvedValue({ [SYNC_STORAGE_KEY]: stored, [MANAGED_OVERRIDE_PATHS_KEY]: [] });
+    browser.storage.local.get.mockResolvedValue({ [SYNC_STORAGE_KEY]: stored, [MANAGED_OVERRIDE_PATHS_KEY]: [] });
     const saved = await saveSettings({ ...stored, features: { ...stored.features, batchIoc: false }, debugLogging: true });
     expect(saved).toMatchObject({ features: { batchIoc: false }, debugLogging: true });
-    expect(browser.storage.sync.set).toHaveBeenCalledWith(expect.objectContaining({
+    expect(browser.storage.local.set).toHaveBeenCalledWith(expect.objectContaining({
       [SYNC_STORAGE_KEY]: expect.objectContaining({ features: expect.objectContaining({ batchIoc: true }), debugLogging: true }),
       [MANAGED_OVERRIDE_PATHS_KEY]: [],
     }));
