@@ -262,7 +262,7 @@ export class SiemDomAdapter {
       "subject.account.name", "object.account.name", "object.process.id", "object.process.parent.id",
       "object.process.guid", "object.process.parent.guid", "subject.process.guid", "object.process.name",
       "object.process.parent.name", "object.process.cmdline", "object.hash", "object.name", "external_link",
-      "correlation_name", "incident_id", "asset.id", "event_src.asset.id", "src.asset.id", "dst.asset.id",
+      "correlation_name", "correlation_type", "incident_id", "asset.id", "event_src.asset.id", "src.asset.id", "dst.asset.id",
       "event_src.asset", "src.asset", "dst.asset",
     ];
     const event = this.extractVisibleFields();

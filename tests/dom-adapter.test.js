@@ -33,6 +33,7 @@ describe("MP SIEM DOM adapter fixtures", () => {
           <div><mc-dt> event_src.host </mc-dt><mc-dd><pdql-fast-filter>win-host-01</pdql-fast-filter></mc-dd></div>
           <div><mc-dt> object.process.cmdline </mc-dt><mc-dd><pdql-fast-filter>cmd.exe /c whoami</pdql-fast-filter></mc-dd></div>
           <div><mc-dt> chain_id </mc-dt><mc-dd><pdql-fast-filter>chain-42</pdql-fast-filter></mc-dd></div>
+          <div><mc-dt> correlation_type </mc-dt><mc-dd><pdql-fast-filter>incident</pdql-fast-filter></mc-dd></div>
         </mc-sidebar-opened>
       </mc-sidebar>`;
 
@@ -44,6 +45,7 @@ describe("MP SIEM DOM adapter fixtures", () => {
       "event_src.host": "win-host-01",
       "object.process.cmdline": "cmd.exe /c whoami",
       chain_id: "chain-42",
+      correlation_type: "incident",
     });
   });
   it("reaches a same-origin legacy application iframe without all-frames injection", () => {
