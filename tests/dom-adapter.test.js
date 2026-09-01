@@ -102,12 +102,22 @@ describe("MP SIEM DOM adapter fixtures", () => {
     const feature = new EventFieldActions({ features: { eventActions: true }, externalProviders: [] });
     feature.onDomChanged({ event: adapter.extractEvent(), adapter });
 
-    document.querySelector("mc-dt:nth-of-type(2) .apepatrol-field-action").click();
+    const actionButton = document.querySelector("mc-dt:nth-of-type(2) .apepatrol-field-action");
+    let actionBox = { left: 100, right: 120, top: 100, bottom: 120 };
+    vi.spyOn(actionButton, "getBoundingClientRect").mockImplementation(() => actionBox);
+    actionButton.click();
+    const menu = document.querySelector(".apepatrol-action-menu");
+    expect(menu.style.top).toBe("124px");
+    actionBox = { left: 100, right: 120, top: 200, bottom: 220 };
+    document.body.dispatchEvent(new Event("scroll"));
+    expect(menu.style.top).toBe("224px");
     const apiButton = [...document.querySelectorAll(".apepatrol-action-menu button")].find((button) => button.textContent === "VirusTotal API");
     expect(apiButton).toBeTruthy();
     apiButton.click();
     await vi.waitFor(() => expect(document.querySelector(".apepatrol-enrichment-result")?.textContent).toContain("VirusTotal"));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: "enrichment:ioc", provider: "virustotal", ioc: { type: "ip", value: "8.8.8.8" } });
+    document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, composed: true }));
+    expect(document.querySelector(".apepatrol-action-menu")).toBeNull();
     feature.unmount();
   });
   it("adds direct event actions to the open SIEM card", async () => {

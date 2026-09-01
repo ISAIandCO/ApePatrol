@@ -58,6 +58,8 @@ export class EventFieldActions {
     this.eventToolbar = null;
     this.eventMenu = null;
     this.eventFingerprint = null;
+    this.actionMenu = null;
+    this.actionMenuAbort = null;
   }
 
   mount() {}
@@ -209,7 +211,7 @@ export class EventFieldActions {
   }
 
   openMenu(anchor, field, rawValue, event) {
-    document.querySelector(".apepatrol-action-menu")?.remove();
+    this.closeActionMenu();
     const ioc = iocFromField(field, rawValue);
     const value = ioc?.value ?? rawValue;
     const menu = document.createElement("div");
@@ -219,6 +221,7 @@ export class EventFieldActions {
     title.className = "apepatrol-action-title";
     title.textContent = `${field}: ${String(value).slice(0, 120)}`;
     menu.append(title);
+    let reposition = () => {};
     const add = (label, handler, { keepOpen = false } = {}) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -226,9 +229,11 @@ export class EventFieldActions {
       button.addEventListener("click", async () => {
         try {
           await handler(button);
-          if (!keepOpen) menu.remove();
+          if (!keepOpen) this.closeActionMenu();
         } catch (error) {
           renderLookupResult(menu, { error: error.message });
+        } finally {
+          reposition();
         }
       });
       menu.append(button);
@@ -283,14 +288,50 @@ export class EventFieldActions {
       if (url) add(provider.name, () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));
     }
     if (ioc) add("Настройки IOC-провайдеров…", () => browser.runtime.openOptionsPage());
-    const box = anchor.getBoundingClientRect();
     document.body.append(menu);
-    const width = Math.min(menu.offsetWidth || 360, innerWidth - 12);
-    const height = Math.min(menu.offsetHeight || 420, innerHeight - 12);
-    menu.style.left = `${Math.max(6, Math.min(box.left, innerWidth - width - 6))}px`;
-    menu.style.top = `${Math.max(6, Math.min(box.bottom + 4, innerHeight - height - 6))}px`;
-    const close = (event) => { if (!menu.contains(event.target) && event.target !== anchor) menu.remove(); };
-    setTimeout(() => document.addEventListener("click", close, { once: true }), 0);
+    this.actionMenu = menu;
+    const controller = new AbortController();
+    this.actionMenuAbort = controller;
+    reposition = () => {
+      if (this.actionMenu !== menu) return;
+      if (!anchor.isConnected) {
+        this.closeActionMenu();
+        return;
+      }
+      const box = anchor.getBoundingClientRect();
+      if (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) {
+        this.closeActionMenu();
+        return;
+      }
+      const width = Math.min(menu.offsetWidth || 360, innerWidth - 12);
+      const height = Math.min(menu.offsetHeight || 420, innerHeight - 12);
+      const below = box.bottom + 4;
+      menu.style.left = `${Math.max(6, Math.min(box.left, innerWidth - width - 6))}px`;
+      menu.style.top = `${below + height <= innerHeight - 6 ? below : Math.max(6, box.top - height - 4)}px`;
+    };
+    const scrollTargets = new Set([window]);
+    for (let current = anchor; current;) {
+      scrollTargets.add(current);
+      const root = current.getRootNode?.();
+      current = current.parentElement ?? root?.host ?? null;
+    }
+    for (const target of scrollTargets) target.addEventListener("scroll", reposition, { passive: true, signal: controller.signal });
+    window.addEventListener("resize", reposition, { passive: true, signal: controller.signal });
+    document.addEventListener("pointerdown", (pointerEvent) => {
+      if (menu.contains(pointerEvent.target) || pointerEvent.composedPath().includes(anchor)) return;
+      this.closeActionMenu();
+    }, { capture: true, signal: controller.signal });
+    document.addEventListener("keydown", (keyEvent) => {
+      if (keyEvent.key === "Escape") this.closeActionMenu();
+    }, { signal: controller.signal });
+    reposition();
+  }
+
+  closeActionMenu() {
+    this.actionMenuAbort?.abort();
+    this.actionMenuAbort = null;
+    this.actionMenu?.remove();
+    this.actionMenu = null;
   }
 
   unmount() {
@@ -299,7 +340,7 @@ export class EventFieldActions {
     this.eventToolbar = null;
     this.eventMenu = null;
     this.eventFingerprint = null;
-    document.querySelector(".apepatrol-action-menu")?.remove();
+    this.closeActionMenu();
   }
 }
 
