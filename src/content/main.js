@@ -9,6 +9,7 @@ import { getAssetContext } from "../siem/features/asset-enrichment.js";
 import { EventFieldActions } from "../siem/features/event-actions.js";
 import { FieldAliasesFeature } from "../siem/features/field-aliases.js";
 import { IocDescriptionFeature } from "../siem/features/ioc-description.js";
+import { resolveIncidentContext } from "../siem/features/incident-context.js";
 import { PdqlAutocompleteFeature } from "../siem/features/pdql-autocomplete.js";
 import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
@@ -97,6 +98,18 @@ async function initialize() {
             urls: Object.fromEntries(["5m", "15m", "1h", "24h"].map((preset) => [preset, buildEventSearchUrl(location.origin, action.where, event.time, preset)])),
           }));
           return { ok: true, actions };
+        }
+        case "siem:incident-context": {
+          if (!settings.features.incidentContext) return { ok: false, error: "Incident context is disabled", kind: "feature-unavailable" };
+          const request = (scope) => resolveIncidentContext(client, event, { scope });
+          let incident;
+          try {
+            incident = await request(processScope(settings));
+          } catch (error) {
+            if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+            incident = await request({});
+          }
+          return { ok: true, incident };
         }
         case "siem:ai-related":
           if (!settings.features.relatedEvents) return { ok: false, error: "Related events are disabled", kind: "feature-unavailable" };

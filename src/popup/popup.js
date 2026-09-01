@@ -18,6 +18,7 @@ const state = {
   lists: [],
   knowledgeBaseUrl: null,
   rule: null,
+  incident: null,
   aiPreviewHash: null,
   iocs: [],
   batchJobs: [],
@@ -279,12 +280,7 @@ function renderEvent() {
     : state.context?.detected
       ? "MP SIEM detected · event card is closed or still loading"
       : "Configured origin reached · MP SIEM UI not detected");
-  const incidentId = state.context?.event?.incident_id;
-  if (state.settings.features.incidentContext) {
-    byId("incident-output").textContent = incidentId
-      ? `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`
-      : "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
-  }
+  renderIncidentContext();
   const ai = state.settings.ai;
   byId("ai-disclosure").textContent = `Destination: ${ai.endpoint || "not configured"}. Mode: ${ai.mode}. ApePatrol will show the exact final request body before transmission; warnings are not a DLP guarantee.`;
   byId("ai-preview-button").disabled = !state.settings.features.aiAssistant || !ai.endpoint || !ai.model;
@@ -293,6 +289,27 @@ function renderEvent() {
   renderCustomFilters();
   renderWorkspaceActions();
   renderBatchChoices();
+}
+
+function renderIncidentContext() {
+  if (!state.settings.features.incidentContext) return;
+  const event = state.context?.event ?? {};
+  const incidentId = state.incident?.incidentId ?? event.incident_id;
+  const correlationName = state.incident?.correlationName ?? event.correlation_name;
+  const correlationType = String(state.incident?.correlationType ?? event.correlation_type ?? "").toLowerCase();
+  let message;
+  if (incidentId) {
+    message = `Linked incident ID: ${incidentId}. Use the native SIEM incident action to open or modify it.`;
+  } else if (state.incident === null && event.uuid) {
+    message = "Loading incident context from SIEM…";
+  } else if (correlationType === "incident") {
+    message = `The selected correlation event${correlationName ? ` (${correlationName})` : ""} is registered as an incident${event.uuid ? `; event UUID: ${event.uuid}` : ""}.`;
+  } else if (correlationName) {
+    message = `Correlation event selected: ${correlationName}. SIEM did not return a linked incident ID${correlationType ? ` (correlation type: ${correlationType})` : ""}.`;
+  } else {
+    message = "No incident link is present in the current event. Related host, account and IP searches remain available in the Related tab.";
+  }
+  byId("incident-output").textContent = message;
 }
 
 function renderWorkspaceActions() {
@@ -549,6 +566,12 @@ async function initialize() {
     showError(byId("related-output"), optional.related.error);
   } else if (state.settings.features.relatedEvents) {
     renderRelated();
+  }
+  if (optional.incident?.ok) {
+    state.incident = optional.incident.value.incident;
+    renderIncidentContext();
+  } else if (optional.incident) {
+    showError(byId("incident-output"), optional.incident.error);
   }
   if (optional.rule?.ok) {
     state.knowledgeBaseUrl = optional.rule.value.knowledgeBaseUrl;

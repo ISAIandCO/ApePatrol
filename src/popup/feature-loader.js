@@ -3,6 +3,9 @@ export async function loadOptionalPopupFeatures({ settings, context, request }) 
   if (settings.features.relatedEvents) {
     operations.push({ id: "related", run: () => request({ type: "siem:related" }) });
   }
+  if (settings.features.incidentContext && context.event?.uuid && !context.event?.incident_id) {
+    operations.push({ id: "incident", run: () => request({ type: "siem:incident-context" }) });
+  }
   if (settings.features.ruleIntelligence !== false && context.event?.correlation_name) {
     operations.push({ id: "rule", run: () => request({ type: "siem:rule-context" }) });
   }
