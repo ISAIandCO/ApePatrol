@@ -78,6 +78,39 @@ function latestPrior(candidates, node, minimumTime = -Infinity) {
   return candidate && candidate.time >= minimumTime ? candidate : null;
 }
 
+function latestParent(candidates, node, minimumTime = -Infinity) {
+  if (!candidates?.length) return null;
+  let low = 0;
+  let high = candidates.length - 1;
+  let match = -1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (candidates[middle].time <= node.time) {
+      match = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  while (match >= 0) {
+    const candidate = candidates[match--];
+    if (candidate.time < minimumTime) break;
+    if (candidate !== node) return candidate;
+  }
+  return null;
+}
+
+function createsCycle(node, parent, nodes) {
+  const visited = new Set([node.id]);
+  let current = parent;
+  while (current) {
+    if (visited.has(current.id)) return true;
+    visited.add(current.id);
+    current = nodes.get(current.parentId);
+  }
+  return false;
+}
+
 function representsSourceProcess(event, sourceEvent) {
   const sourceUuid = String(sourceEvent?.uuid ?? "");
   if (sourceUuid && String(event?.uuid ?? "") === sourceUuid) return true;
@@ -131,10 +164,10 @@ export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64, pidP
     for (const reference of [...node.parentRefs].sort((a, b) => Number(a.kind === "pid") - Number(b.kind === "pid"))) {
       parentIndexLookups += 1;
       const minimumTime = reference.kind === "pid" ? node.time - pidParentWindowMs : -Infinity;
-      parent = latestPrior(referenceIndex.get(referenceKey(node.host, reference)), node, minimumTime);
+      parent = latestParent(referenceIndex.get(referenceKey(node.host, reference)), node, minimumTime);
       if (parent) break;
     }
-    if (parent) node.parentId = parent.id;
+    if (parent && (parent.time !== node.time || !createsCycle(node, parent, nodes))) node.parentId = parent.id;
   }
   for (const node of list) {
     const parent = nodes.get(node.parentId);

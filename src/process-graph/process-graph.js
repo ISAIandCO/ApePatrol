@@ -8,6 +8,8 @@ const byId = (id) => document.getElementById(id);
 const canvas = byId("process-canvas");
 const context = canvas.getContext("2d");
 const tooltip = byId("process-tooltip");
+let tooltipHideTimer = null;
+let tooltipHovered = false;
 const params = new URLSearchParams(location.search);
 let sourceTabId = Number(params.get("tabId"));
 const snapshotId = params.get("snapshotId");
@@ -411,11 +413,19 @@ function tooltipRow(label, value) {
   return row;
 }
 
+function scheduleTooltipHide() {
+  clearTimeout(tooltipHideTimer);
+  tooltipHideTimer = setTimeout(() => {
+    if (!tooltipHovered) tooltip.hidden = true;
+  }, 180);
+}
+
 function showTooltip(node, clientX, clientY) {
   if (!node) {
-    tooltip.hidden = true;
+    scheduleTooltipHide();
     return;
   }
+  clearTimeout(tooltipHideTimer);
   tooltip.replaceChildren();
   const title = document.createElement("h2");
   title.textContent = node.label;
@@ -465,6 +475,7 @@ function pointerPosition(event) {
 }
 
 canvas.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
   const position = pointerPosition(event);
   const node = hitTest(position.x, position.y);
   state.pointerDown = { x: position.x, y: position.y, moved: false, node };
@@ -501,6 +512,7 @@ canvas.addEventListener("pointermove", (event) => {
 });
 
 canvas.addEventListener("pointerup", (event) => {
+  if (event.button !== 0 || !state.pointerDown) return;
   const node = state.pointerDown?.node;
   const shouldOpen = node && !state.pointerDown.moved;
   state.dragNode = null;
@@ -508,7 +520,7 @@ canvas.addEventListener("pointerup", (event) => {
   state.pointerDown = null;
   if (state.layout === "force") startSimulation();
   if (shouldOpen) openNodeEvent(node).catch((error) => setStatus(error.message, true));
-  canvas.releasePointerCapture(event.pointerId);
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
 });
 
 canvas.addEventListener("pointercancel", () => {
@@ -520,10 +532,20 @@ canvas.addEventListener("pointercancel", () => {
 canvas.addEventListener("pointerleave", () => {
   if (!state.dragNode && !state.pan) {
     state.hovered = null;
-    tooltip.hidden = true;
+    scheduleTooltipHide();
     canvas.classList.remove("node-hover");
     scheduleDraw();
   }
+});
+
+tooltip.addEventListener("pointerenter", () => {
+  tooltipHovered = true;
+  clearTimeout(tooltipHideTimer);
+});
+
+tooltip.addEventListener("pointerleave", () => {
+  tooltipHovered = false;
+  scheduleTooltipHide();
 });
 
 canvas.addEventListener("wheel", (event) => {

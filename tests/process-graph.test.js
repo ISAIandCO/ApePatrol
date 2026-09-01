@@ -26,6 +26,12 @@ describe("process graph", () => {
     const graph = buildProcessGraph([child, parent]);
     expect(graph.nodes.find((node) => node.event.uuid === "child").parentId).toBe(graph.nodes.find((node) => node.event.uuid === "parent").id);
   });
+  it("links same-second Windows events regardless of API result order", () => {
+    const parent = event({ uuid: "parent", "object.process.id": "4432" });
+    const child = event({ uuid: "child", "object.process.id": "8876", "object.process.parent.id": "4432" });
+    const graph = buildProcessGraph([child, parent]);
+    expect(graph.nodes.find((node) => node.event.uuid === "child").parentId).toBe(graph.nodes.find((node) => node.event.uuid === "parent").id);
+  });
   it("orders a tree as parent then descendants instead of grouping all equal depths", () => {
     const graph = buildProcessGraph([
       event({ uuid: "root-a", "object.process.id": "1" }),
