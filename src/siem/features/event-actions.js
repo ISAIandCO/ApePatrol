@@ -1,7 +1,7 @@
 import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
 import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
-import { fillUrlTemplate, parseSafeExternalUrl } from "../../shared/url.js";
+import { fillUrlTemplate, parseSafeExternalUrl, sanitizeFilenamePart } from "../../shared/url.js";
 import { buildEventSearchUrl } from "./related-events.js";
 
 const ACTION_FIELDS = [
@@ -34,16 +34,36 @@ function workspaceItem(field, value, ioc, event) {
   };
 }
 
+function eventWorkspaceItem(event) {
+  const value = event.uuid ?? [event.time, event["event_src.host"], event.correlation_name].filter(Boolean).join(":");
+  if (!value) return null;
+  return {
+    type: "event",
+    value: String(value),
+    label: String(event.correlation_name ?? event.uuid ?? value).slice(0, 300),
+    sourceEventUuid: event.uuid ?? null,
+    snapshot: event,
+  };
+}
+
+function eventFilename(event) {
+  const suffix = [event.time, event.uuid, event["event_src.host"]].map((value) => sanitizeFilenamePart(value, "")).filter(Boolean).join("-");
+  return `siem-event-${suffix || "event"}.json`;
+}
+
 export class EventFieldActions {
   constructor(settings) {
     this.settings = settings;
     this.elements = new Set();
+    this.eventToolbar = null;
+    this.eventFingerprint = null;
   }
 
   mount() {}
 
   onDomChanged({ event, adapter }) {
     if (!this.settings.features.eventActions) return;
+    this.mountEventToolbar(event, adapter);
     const actionFields = new Set([...ACTION_FIELDS, ...Object.keys(event).filter((field) => iocFromField(field, event[field]))]);
     for (const field of actionFields) {
       const value = event[field];
@@ -71,6 +91,79 @@ export class EventFieldActions {
       label.append(button);
       this.elements.add(button);
     }
+  }
+
+  mountEventToolbar(event, adapter) {
+    const card = adapter.getEventCard();
+    const eventJson = JSON.stringify(event, null, 2);
+    const fingerprint = eventJson;
+    if (!card || !Object.keys(event).length) {
+      this.eventToolbar?.remove();
+      this.eventToolbar = null;
+      this.eventFingerprint = null;
+      return;
+    }
+    if (this.eventToolbar?.parentNode === card && this.eventFingerprint === fingerprint) return;
+    this.eventToolbar?.remove();
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "apepatrol-event-actions";
+    toolbar.dataset.apepatrolUi = "event-actions";
+    toolbar.setAttribute("role", "group");
+    toolbar.setAttribute("aria-label", "Действия ApePatrol с событием");
+    const status = document.createElement("span");
+    status.className = "apepatrol-event-action-status";
+    status.setAttribute("aria-live", "polite");
+    const add = (label, title, handler, enabled = true) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.title = title;
+      button.disabled = !enabled;
+      button.addEventListener("click", async (clickEvent) => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        status.classList.remove("error");
+        try {
+          const message = await handler();
+          status.textContent = message ?? "Готово";
+        } catch (error) {
+          status.textContent = `Ошибка: ${error.message}`;
+          status.classList.add("error");
+        }
+      });
+      toolbar.append(button);
+    };
+
+    const item = this.settings.features.investigationWorkspace && eventWorkspaceItem(event);
+    add("📌 В расследование", "Добавить событие в последнее расследование", async () => {
+      const response = await browser.runtime.sendMessage({ type: "workspace:item:add", sourceIncidentId: event.incident_id ?? null, item });
+      if (!response?.ok) throw new Error(response?.error ?? "Не удалось добавить событие");
+      return `Добавлено в «${response.workspace.title}»`;
+    }, Boolean(item));
+    add("Копировать JSON", "Скопировать JSON события", async () => {
+      await navigator.clipboard.writeText(eventJson);
+      return "JSON скопирован";
+    });
+    add("Копировать ссылку", "Скопировать ссылку на событие", async () => {
+      const url = buildEventSearchUrl(location.origin, buildEqualityPredicate("uuid", event.uuid), event.time, "5m");
+      await navigator.clipboard.writeText(url);
+      return "Ссылка скопирована";
+    }, Boolean(event.uuid));
+    add("Скачать JSON", "Скачать JSON события", async () => {
+      const response = await browser.runtime.sendMessage({
+        type: "downloads:text",
+        content: eventJson,
+        options: { filename: eventFilename(event), mime: "application/json" },
+      });
+      if (!response?.ok) throw new Error(response?.error ?? "Не удалось скачать JSON");
+      return "Загрузка начата";
+    });
+    toolbar.append(status);
+    card.prepend(toolbar);
+    this.eventToolbar = toolbar;
+    this.eventFingerprint = fingerprint;
+    this.elements.add(toolbar);
   }
 
   openMenu(anchor, field, rawValue, event) {
@@ -161,6 +254,8 @@ export class EventFieldActions {
   unmount() {
     for (const element of this.elements) element.remove();
     this.elements.clear();
+    this.eventToolbar = null;
+    this.eventFingerprint = null;
     document.querySelector(".apepatrol-action-menu")?.remove();
   }
 }

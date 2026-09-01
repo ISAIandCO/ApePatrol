@@ -87,4 +87,19 @@ describe("process graph", () => {
     const graph = buildProcessGraph([oldProcess, currentProcess]);
     expect(findSourceProcessNodeId(graph, selected)).toBe(graph.nodes.find((node) => node.event.uuid === "current").id);
   });
+  it("keeps the source process visible when the process query omitted it at the node limit", () => {
+    const source = event({ uuid: "source", time: "2026-01-01T02:00:00Z", "object.process.guid": "SOURCE" });
+    const events = [
+      event({ uuid: "first", time: "2026-01-01T00:00:00Z", "object.process.guid": "FIRST" }),
+      event({ uuid: "second", time: "2026-01-01T01:00:00Z", "object.process.guid": "SECOND" }),
+    ];
+    const graph = buildProcessGraph(events, { maxNodes: 2, sourceEvent: source });
+    expect(findSourceProcessNodeId(graph, source)).not.toBeNull();
+    expect(graph.nodes.some((node) => node.event.uuid === "source")).toBe(true);
+  });
+  it("builds a selected source node even when the process query is empty", () => {
+    const source = event({ uuid: "source-only", "object.process.guid": "SOURCE" });
+    const graph = buildProcessGraph([], { sourceEvent: source });
+    expect(findSourceProcessNodeId(graph, source)).toBe(graph.nodes[0].id);
+  });
 });
