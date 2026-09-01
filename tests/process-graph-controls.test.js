@@ -19,4 +19,14 @@ describe("process graph controls", () => {
     expect(css).toContain("overscroll-behavior: contain");
     expect(css).toContain("#process-tooltip.pinned { pointer-events: auto; }");
   });
+
+  it("exposes persistent Obsidian-style force controls", async () => {
+    const html = await readFile(new URL("../src/static/process-graph.html", import.meta.url), "utf8");
+    const script = await readFile(new URL("../src/process-graph/process-graph.js", import.meta.url), "utf8");
+    for (const id of ["force-attraction", "force-repulsion", "force-link-strength", "force-link-distance", "force-reset"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(script).toContain("apepatrol.processGraph.forceSettings.v1");
+    expect(script).toContain("startSimulation({ fitWhenDone: true })");
+  });
 });

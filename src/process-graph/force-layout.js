@@ -4,6 +4,28 @@ const NEIGHBOR_OFFSETS = Object.freeze([
   [-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 0], [1, 1],
 ]);
 
+export const DEFAULT_FORCE_SETTINGS = Object.freeze({
+  attraction: .4,
+  repulsion: 16,
+  linkStrength: 1,
+  linkDistance: 88,
+});
+
+const FORCE_SETTING_LIMITS = Object.freeze({
+  attraction: [0, 1],
+  repulsion: [0, 30],
+  linkStrength: [0, 2],
+  linkDistance: [40, 500],
+});
+
+export function normalizeForceSettings(settings = {}) {
+  return Object.fromEntries(Object.entries(DEFAULT_FORCE_SETTINGS).map(([name, fallback]) => {
+    const numeric = Number(settings?.[name]);
+    const [minimum, maximum] = FORCE_SETTING_LIMITS[name];
+    return [name, Number.isFinite(numeric) ? Math.max(minimum, Math.min(maximum, numeric)) : fallback];
+  }));
+}
+
 export function hashNumber(value) {
   let hash = 2166136261;
   for (const char of String(value)) {
@@ -35,12 +57,13 @@ function repelPair(first, second, alpha) {
   second.vy += forceY;
 }
 
-export function applyRepulsion(nodes, alpha) {
+export function applyRepulsion(nodes, alpha, strength = DEFAULT_FORCE_SETTINGS.repulsion) {
+  const scaledAlpha = alpha * normalizeForceSettings({ repulsion: strength }).repulsion / DEFAULT_FORCE_SETTINGS.repulsion;
   let comparisons = 0;
   if (nodes.length <= EXACT_REPULSION_LIMIT) {
     for (let firstIndex = 0; firstIndex < nodes.length; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < nodes.length; secondIndex += 1) {
-        repelPair(nodes[firstIndex], nodes[secondIndex], alpha);
+        repelPair(nodes[firstIndex], nodes[secondIndex], scaledAlpha);
         comparisons += 1;
       }
     }
@@ -71,7 +94,7 @@ export function applyRepulsion(nodes, alpha) {
       for (let step = 0; step < candidates.length && comparedForNode < LARGE_GRAPH_NEIGHBORS; step += 1) {
         const other = candidates[(candidateStart + step) % candidates.length];
         if (other === node) continue;
-        repelPair(node, other, alpha * .5);
+        repelPair(node, other, scaledAlpha * .5);
         comparedForNode += 1;
         comparisons += 1;
       }
@@ -85,7 +108,7 @@ export function forceIterationLimit(nodeCount) {
   return Math.max(45, Math.round(300 * Math.sqrt(EXACT_REPULSION_LIMIT / nodeCount)));
 }
 
-export function stabilizeForceNode(node, alpha, boundary, dragged = false) {
+export function stabilizeForceNode(node, alpha, boundary, dragged = false, attraction = DEFAULT_FORCE_SETTINGS.attraction) {
   if (![node.x, node.y, node.vx, node.vy].every(Number.isFinite)) {
     node.x = 0;
     node.y = 0;
@@ -94,8 +117,12 @@ export function stabilizeForceNode(node, alpha, boundary, dragged = false) {
   }
   node.x = Math.max(-boundary, Math.min(boundary, node.x));
   node.y = Math.max(-boundary, Math.min(boundary, node.y));
-  node.vx += -node.x * .00035 * alpha;
-  node.vy += -node.y * .00035 * alpha;
+  const numericAttraction = Number(attraction);
+  const attractionStrength = Number.isFinite(numericAttraction)
+    ? Math.max(0, Math.min(1, numericAttraction))
+    : DEFAULT_FORCE_SETTINGS.attraction;
+  node.vx += -node.x * .000875 * attractionStrength * alpha;
+  node.vy += -node.y * .000875 * attractionStrength * alpha;
   if (dragged) return;
   node.vx *= .82;
   node.vy *= .82;

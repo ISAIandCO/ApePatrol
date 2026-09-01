@@ -1,7 +1,7 @@
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { buildProcessGraphView } from "../siem/process/view-model.js";
-import { applyRepulsion, forceIterationLimit, hashNumber, stabilizeForceNode } from "./force-layout.js";
+import { applyRepulsion, DEFAULT_FORCE_SETTINGS, forceIterationLimit, hashNumber, normalizeForceSettings, stabilizeForceNode } from "./force-layout.js";
 import { ProcessSpatialIndex } from "./spatial-index.js";
 import { filterProcessNodes } from "../siem/process/filters.js";
 
@@ -12,6 +12,12 @@ const tooltip = byId("process-tooltip");
 const params = new URLSearchParams(location.search);
 let sourceTabId = Number(params.get("tabId"));
 const snapshotId = params.get("snapshotId");
+const FORCE_STORAGE_KEY = "apepatrol.processGraph.forceSettings.v1";
+
+function loadForceSettings() {
+  try { return normalizeForceSettings(JSON.parse(localStorage.getItem(FORCE_STORAGE_KEY) ?? "{}")); }
+  catch { return { ...DEFAULT_FORCE_SETTINGS }; }
+}
 
 const state = {
   graph: null,
@@ -46,6 +52,7 @@ const state = {
   activeRequestId: null,
   nodeLimit: 1000,
   sliderRange: { from: null, to: null },
+  forceSettings: loadForceSettings(),
 };
 
 function visibleNodes() { return state.nodes.filter((node) => state.visibleNodeIds.has(node.id)); }
@@ -70,7 +77,7 @@ function seedForceLayout() {
     const parent = state.nodeMap.get(node.parentId);
     const angle = (hashNumber(node.id) / 0xffffffff) * Math.PI * 2;
     if (parent) {
-      const distance = 95 + Math.min(node.depth, 8) * 7;
+      const distance = state.forceSettings.linkDistance + Math.min(node.depth, 8) * 7;
       node.x = parent.x + Math.cos(angle) * distance;
       node.y = parent.y + Math.sin(angle) * distance;
     } else {
@@ -166,16 +173,16 @@ function simulationStep() {
     const dx = target.x - source.x;
     const dy = target.y - source.y;
     const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-    const desired = 88 + source.radius + target.radius;
-    const force = ((distance - desired) / distance) * .018 * alpha;
+    const desired = state.forceSettings.linkDistance + source.radius + target.radius;
+    const force = ((distance - desired) / distance) * .018 * state.forceSettings.linkStrength * alpha;
     source.vx += dx * force;
     source.vy += dy * force;
     target.vx -= dx * force;
     target.vy -= dy * force;
   }
-  applyRepulsion(state.nodes, alpha);
+  applyRepulsion(state.nodes, alpha, state.forceSettings.repulsion);
   for (const node of state.nodes) {
-    stabilizeForceNode(node, alpha, boundary, node === state.dragNode);
+    stabilizeForceNode(node, alpha, boundary, node === state.dragNode, state.forceSettings.attraction);
   }
   state.alpha *= .982;
   state.simulationIterations += 1;
@@ -518,6 +525,31 @@ function updateLayoutButtons() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
+  byId("force-controls").disabled = state.layout !== "force";
+}
+
+const forceControls = Object.freeze({
+  attraction: { input: "force-attraction", output: "force-attraction-value", digits: 2 },
+  repulsion: { input: "force-repulsion", output: "force-repulsion-value", digits: 2 },
+  linkStrength: { input: "force-link-strength", output: "force-link-strength-value", digits: 2 },
+  linkDistance: { input: "force-link-distance", output: "force-link-distance-value", digits: 0 },
+});
+
+function renderForceControls() {
+  for (const [name, control] of Object.entries(forceControls)) {
+    byId(control.input).value = String(state.forceSettings[name]);
+    byId(control.output).value = state.forceSettings[name].toFixed(control.digits);
+  }
+}
+
+function updateForceSetting(name, value, { fitWhenDone = false } = {}) {
+  state.forceSettings = normalizeForceSettings({ ...state.forceSettings, [name]: value });
+  renderForceControls();
+  if (state.layout === "force" && state.nodes.length) startSimulation({ fitWhenDone });
+}
+
+function persistForceSettings() {
+  try { localStorage.setItem(FORCE_STORAGE_KEY, JSON.stringify(state.forceSettings)); } catch { /* optional preference */ }
 }
 
 function selectLayout(layout) {
@@ -731,6 +763,20 @@ byId("process-search").addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
   scheduleDraw();
 });
+for (const [name, control] of Object.entries(forceControls)) {
+  byId(control.input).addEventListener("input", (event) => updateForceSetting(name, event.target.value));
+  byId(control.input).addEventListener("change", () => {
+    persistForceSettings();
+    startSimulation({ fitWhenDone: true });
+  });
+}
+byId("force-reset").addEventListener("click", () => {
+  state.forceSettings = { ...DEFAULT_FORCE_SETTINGS };
+  renderForceControls();
+  persistForceSettings();
+  seedForceLayout();
+  startSimulation({ fitWhenDone: true });
+});
 
 function readFilters() {
   const timeValue = (id) => {
@@ -781,6 +827,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
   if (tabId === sourceTabId && state.nodes.length) markGraphStale();
 });
 updateLayoutButtons();
+renderForceControls();
 updateExpansionUi();
 resizeCanvas();
 initializeGraph().catch((error) => {
