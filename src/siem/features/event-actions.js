@@ -56,6 +56,7 @@ export class EventFieldActions {
     this.settings = settings;
     this.elements = new Set();
     this.eventToolbar = null;
+    this.eventMenu = null;
     this.eventFingerprint = null;
   }
 
@@ -100,18 +101,54 @@ export class EventFieldActions {
     const fingerprint = eventJson;
     if (!host || !Object.keys(event).length) {
       this.eventToolbar?.remove();
+      this.eventMenu?.remove();
       this.eventToolbar = null;
+      this.eventMenu = null;
       this.eventFingerprint = null;
       return;
     }
-    if (this.eventToolbar?.parentNode === host && this.eventFingerprint === fingerprint) return;
+    if (this.eventToolbar?.parentNode === host && this.eventMenu?.isConnected && this.eventFingerprint === fingerprint) return;
+    this.elements.delete(this.eventToolbar);
+    this.elements.delete(this.eventMenu);
     this.eventToolbar?.remove();
+    this.eventMenu?.remove();
 
-    const toolbar = document.createElement("div");
+    const toolbar = document.createElement("span");
     toolbar.className = "apepatrol-event-actions";
     toolbar.dataset.apepatrolUi = "event-actions";
     toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", "Действия ApePatrol с событием");
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.textContent = "🐵 Действия";
+    trigger.title = "Действия ApePatrol с событием";
+    trigger.setAttribute("aria-haspopup", "menu");
+    trigger.setAttribute("aria-expanded", "false");
+    const menu = document.createElement("div");
+    menu.className = "apepatrol-event-actions-menu";
+    menu.id = `apepatrol-event-actions-${crypto.randomUUID()}`;
+    menu.setAttribute("popover", "auto");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "Действия ApePatrol с событием");
+    trigger.setAttribute("aria-controls", menu.id);
+    menu.addEventListener("toggle", (toggleEvent) => trigger.setAttribute("aria-expanded", String(toggleEvent.newState === "open")));
+    trigger.addEventListener("click", (clickEvent) => {
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      if (menu.matches(":popover-open")) {
+        menu.hidePopover();
+        return;
+      }
+      menu.showPopover();
+      requestAnimationFrame(() => {
+        const box = trigger.getBoundingClientRect();
+        const width = Math.min(menu.offsetWidth || 280, innerWidth - 12);
+        const height = Math.min(menu.offsetHeight || 260, innerHeight - 12);
+        menu.style.left = `${Math.max(6, Math.min(box.left, innerWidth - width - 6))}px`;
+        menu.style.top = `${Math.max(6, Math.min(box.bottom + 4, innerHeight - height - 6))}px`;
+      });
+    });
+    toolbar.append(trigger);
     const status = document.createElement("span");
     status.className = "apepatrol-event-action-status";
     status.setAttribute("aria-live", "polite");
@@ -120,6 +157,7 @@ export class EventFieldActions {
       button.type = "button";
       button.textContent = label;
       button.title = title;
+      button.setAttribute("role", "menuitem");
       button.disabled = !enabled;
       button.addEventListener("click", async (clickEvent) => {
         clickEvent.preventDefault();
@@ -133,7 +171,7 @@ export class EventFieldActions {
           status.classList.add("error");
         }
       });
-      toolbar.append(button);
+      menu.append(button);
     };
 
     const item = this.settings.features.investigationWorkspace && eventWorkspaceItem(event);
@@ -160,12 +198,14 @@ export class EventFieldActions {
       if (!response?.ok) throw new Error(response?.error ?? "Не удалось скачать JSON");
       return "Загрузка начата";
     });
-    toolbar.append(status);
+    menu.append(status);
+    document.body.append(menu);
     if (host === card) card.prepend(toolbar);
     else host.append(toolbar);
     this.eventToolbar = toolbar;
+    this.eventMenu = menu;
     this.eventFingerprint = fingerprint;
-    this.elements.add(toolbar);
+    this.elements.add(toolbar).add(menu);
   }
 
   openMenu(anchor, field, rawValue, event) {
@@ -257,6 +297,7 @@ export class EventFieldActions {
     for (const element of this.elements) element.remove();
     this.elements.clear();
     this.eventToolbar = null;
+    this.eventMenu = null;
     this.eventFingerprint = null;
     document.querySelector(".apepatrol-action-menu")?.remove();
   }

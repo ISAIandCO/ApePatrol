@@ -231,12 +231,14 @@ export class SiemDomAdapter {
     const fieldTime = this.getEventField("time");
     if (fieldTime) return fieldTime;
     const header = queryDeep(EVENT_TIME_SELECTOR, this.getEventCard() ?? this.getRoot());
-    return header?.textContent?.trim().replace(",", "") || null;
+    const cleanHeader = header?.cloneNode?.(true);
+    cleanHeader?.querySelectorAll?.("[data-apepatrol-ui]").forEach((element) => element.remove());
+    return cleanHeader?.textContent?.trim().replace(",", "") || null;
   }
   getEventUuid() { return this.getEventField("uuid"); }
   getEventActionsHost() {
     const card = this.getEventCard();
-    return card?.querySelector?.(":scope > header") ?? card;
+    return queryDeep(EVENT_TIME_SELECTOR, card) ?? this.getEventFieldElement("uuid") ?? card;
   }
   getFilterEditor() {
     const editors = queryAllDeep(FILTER_EDITOR_SELECTOR, this.getRoot());
