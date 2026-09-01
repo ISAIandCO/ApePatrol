@@ -112,17 +112,21 @@ describe("MP SIEM DOM adapter fixtures", () => {
   });
   it("adds direct event actions to the open SIEM card", async () => {
     document.body.innerHTML = `
-      <article class="event-card">
+      <mc-sidebar><mc-sidebar-opened>
+        <header><div class="layout-padding-no-left mc-sidebar-header__title flex">2026-09-01T10:00:00Z</div></header>
         <mc-dt> uuid </mc-dt><mc-dd>event-toolbar</mc-dd>
         <mc-dt> time </mc-dt><mc-dd>2026-09-01T10:00:00Z</mc-dd>
         <mc-dt> event_src.host </mc-dt><mc-dd>host-1</mc-dd>
-      </article>`;
+      </mc-sidebar-opened></mc-sidebar>`;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
     globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, workspace: { title: "IR-1" }, downloadId: 7 }) } };
     const adapter = new SiemDomAdapter();
     const feature = new EventFieldActions({ features: { eventActions: true, investigationWorkspace: true }, externalProviders: [] });
     feature.onDomChanged({ event: adapter.extractEvent(), adapter });
 
+    const card = adapter.getEventCard();
+    expect(card.firstElementChild.tagName).toBe("HEADER");
+    expect(card.querySelector(":scope > header > .apepatrol-event-actions")).toBeTruthy();
     const buttons = [...document.querySelectorAll(".apepatrol-event-actions button")];
     expect(buttons.map((button) => button.textContent)).toEqual(["📌 В расследование", "Копировать JSON", "Копировать ссылку", "Скачать JSON"]);
     buttons[0].click(); buttons[1].click(); buttons[3].click();
