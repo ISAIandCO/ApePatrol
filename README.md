@@ -1,14 +1,16 @@
 # ApePatrol
 
+<img src="assets/branding/apepatrol-master.png" width="300">
+
 **Firefox investigation companion for MaxPatrol SIEM**
 
 > ApePatrol is the successor to SiemMonkey. The project has been substantially redesigned around Firefox, with MaxPatrol SIEM 27.3 as its primary target.
 
-ApePatrol — расширение-компаньон для расследований в **MaxPatrol SIEM**. Версия 27.3 является основной целью разработки и проверки; на других версиях адаптер пытается работать через capability/DOM detection и best-effort fallback без жёсткой блокировки по номеру версии. Название продолжает исходную идею проекта: Monkey эволюционировал в Ape, а **APE** может читаться как *Analyst Productivity Extension*.
+ApePatrol — расширение-компаньон для расследований в **MaxPatrol SIEM**. Версия 27.3 является основной целью разработки и проверки; на других версиях адаптер пытается работать через capability/DOM detection и best-effort fallback без жёсткой блокировки по номеру версии.
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.4.4
+## Возможности ApePatrol 3.4.9
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
@@ -35,7 +37,7 @@ ApePatrol — независимый open-source проект. Он не свя�
 
 После установки расширение не имеет доступа к сайтам и нигде не выполняет content script. Пользователь добавляет точный origin, например `https://siem.example.internal`, после чего Firefox запрашивает доступ только к `https://siem.example.internal/*`. Регистрация снимается при удалении origin или permission.
 
-Минимальная версия — Firefox Desktop 140. Для Android установлен отдельный baseline 142, соответствующий появлению встроенного согласия на передачу данных.
+Минимальная версия — Firefox Desktop 140.
 
 ## Приватность и безопасность
 
@@ -43,25 +45,5 @@ ApePatrol — независимый open-source проект. Он не свя�
 
 Подробнее: [INSTALL.md](INSTALL.md), [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [бренд](docs/BRANDING.md), [ручные тесты](docs/MANUAL_TESTS.md).
 
-## Разработка
 
-Требуется Node.js 22.
-
-```bash
-npm ci
-npm run build:firefox
-```
-
-Artifact находится в `dist/firefox`. Основные команды:
-
-```bash
-npm run lint
-npm test
-npm run package:firefox
-npm run build:self-hosted
-npm run check:reproducible
-npm run benchmark:graph
-npm run verify:release
-```
-
-Проект распространяется по Apache License 2.0. Исходные `LICENSE` и `NOTICE` сохранены.
+Проект распространяется по Apache License 2.0 (как и оригинал).
