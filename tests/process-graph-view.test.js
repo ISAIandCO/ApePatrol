@@ -33,4 +33,16 @@ describe("process graph view model", () => {
     const details = processNodeDetails(event({ "object.process.cmdline": "<img onerror=alert(1)>" }));
     expect(details).toContainEqual({ label: "Командная строка", value: "<img onerror=alert(1)>" });
   });
+
+  it("uses richer source-event fields to label the selected process", () => {
+    const processStart = event({ uuid: "start", "object.process.name": undefined, "object.process.path": "C:/Temp/explorer.exe" });
+    const graph = buildProcessGraph([processStart]);
+    const sourceEvent = event({ uuid: "activity", "object.process.name": "explorer.exe", "object.process.path": "C:/Temp/explorer.exe" });
+    const view = buildProcessGraphView(graph, graph.nodes[0].id, sourceEvent);
+    const selected = view.nodes[0];
+
+    expect(selected.label).toBe("explorer.exe");
+    expect(selected.details).toContainEqual({ label: "Процесс", value: "explorer.exe" });
+    expect(selected.event.uuid).toBe("start");
+  });
 });

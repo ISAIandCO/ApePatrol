@@ -33,7 +33,13 @@ export function processNodeDetails(event) {
     .map((item) => ({ ...item, value: String(item.value) }));
 }
 
-export function buildProcessGraphView(graph, sourceNodeId = null) {
+function mergeDisplayEvent(event, fallback) {
+  if (!fallback || typeof fallback !== "object") return event;
+  const present = Object.fromEntries(Object.entries(event ?? {}).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return { ...fallback, ...present };
+}
+
+export function buildProcessGraphView(graph, sourceNodeId = null, sourceEvent = null) {
   if (!Array.isArray(graph?.nodes)) return { nodes: [], edges: [] };
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
   const edges = graph.nodes
@@ -46,7 +52,8 @@ export function buildProcessGraphView(graph, sourceNodeId = null) {
   }
   const nodes = graph.nodes.map((node) => {
     const connectionCount = degrees.get(node.id) ?? 0;
-    const details = processNodeDetails(node.event);
+    const displayEvent = node.id === sourceNodeId ? mergeDisplayEvent(node.event, sourceEvent) : node.event;
+    const details = processNodeDetails(displayEvent);
     return {
       id: node.id,
       parentId: node.parentId,
@@ -56,7 +63,7 @@ export function buildProcessGraphView(graph, sourceNodeId = null) {
       connectionCount,
       radius: processNodeRadius(connectionCount),
       selected: node.id === sourceNodeId,
-      label: processNodeLabel(node.event),
+      label: processNodeLabel(displayEvent),
       searchText: details.map((item) => item.value).join(" ").toLowerCase(),
       details,
     };
