@@ -115,7 +115,6 @@ describe("MP SIEM DOM adapter fixtures", () => {
       <mc-sidebar><mc-sidebar-opened>
         <header><div class="layout-padding-no-left mc-sidebar-header__title flex">2026-09-01T10:00:00Z</div></header>
         <mc-dt> uuid </mc-dt><mc-dd>event-toolbar</mc-dd>
-        <mc-dt> time </mc-dt><mc-dd>2026-09-01T10:00:00Z</mc-dd>
         <mc-dt> event_src.host </mc-dt><mc-dd>host-1</mc-dd>
       </mc-sidebar-opened></mc-sidebar>`;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
@@ -126,8 +125,9 @@ describe("MP SIEM DOM adapter fixtures", () => {
 
     const card = adapter.getEventCard();
     expect(card.firstElementChild.tagName).toBe("HEADER");
-    expect(card.querySelector(":scope > header > .apepatrol-event-actions")).toBeTruthy();
-    const buttons = [...document.querySelectorAll(".apepatrol-event-actions button")];
+    expect(card.querySelector(".mc-sidebar-header__title > .apepatrol-event-actions")?.textContent).toBe("🐵 Действия");
+    expect(adapter.getEventTime()).toBe("2026-09-01T10:00:00Z");
+    const buttons = [...document.querySelectorAll(".apepatrol-event-actions-menu button")];
     expect(buttons.map((button) => button.textContent)).toEqual(["📌 В расследование", "Копировать JSON", "Копировать ссылку", "Скачать JSON"]);
     buttons[0].click(); buttons[1].click(); buttons[3].click();
     await vi.waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "downloads:text" })));
