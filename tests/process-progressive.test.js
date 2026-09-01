@@ -4,6 +4,7 @@ import {
   expansionRanges,
   fetchProcessPages,
   mergeLoadedRanges,
+  prioritizeProcessEvents,
   seedProcessRange,
 } from "../src/siem/process/progressive.js";
 
@@ -21,6 +22,12 @@ describe("progressive process queries", () => {
     expect(deduplicateProcessEvents([first], [replacement, { uuid: "b", time: "2026-01-01T01:00:00Z" }])).toEqual([replacement, expect.objectContaining({ uuid: "b" })]);
     expect(mergeLoadedRanges([{ from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }], [{ timeFrom: "2026-01-01T01:00:00Z", timeTo: "2026-01-01T02:00:00Z" }]))
       .toEqual([{ from: "2026-01-01T00:00:00.000Z", to: "2026-01-01T02:00:00.000Z" }]);
+  });
+
+  it("keeps focused relatives when the broad graph reaches its node limit", () => {
+    const broad = [{ uuid: "old-1", time: "2026-01-01T00:00:00Z" }, { uuid: "old-2", time: "2026-01-01T00:00:01Z" }];
+    const focused = [{ uuid: "parent", time: "2026-01-01T00:05:00Z" }, { uuid: "child", time: "2026-01-01T00:05:00Z" }];
+    expect(prioritizeProcessEvents(focused, broad, 3).map((event) => event.uuid)).toEqual(["child", "parent", "old-1"]);
   });
 
   it("pages with offsets until the provider returns a short page", async () => {

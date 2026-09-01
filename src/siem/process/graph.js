@@ -12,6 +12,38 @@ export function buildProcessSearchPredicate(host) {
   );
 }
 
+function processIdValue(field, value) {
+  const numeric = Number(value);
+  return field.endsWith(".id") && Number.isSafeInteger(numeric) && String(numeric) === String(value) ? numeric : value;
+}
+
+export function buildProcessFocusPredicate(event) {
+  const host = event?.["event_src.host"];
+  if (!host) return "";
+  const predicates = new Set();
+  for (const [processField, parentField] of [
+    ["object.process.guid", "object.process.parent.guid"],
+    ["subject.process.guid", "subject.process.parent.guid"],
+    ["object.process.id", "object.process.parent.id"],
+    ["subject.process.id", "subject.process.parent.id"],
+    ["object.id", "object.process.parent.id"],
+  ]) {
+    const processValue = event[processField];
+    if (processValue !== undefined && processValue !== null && processValue !== "") {
+      const value = processIdValue(processField, processValue);
+      predicates.add(buildEqualityPredicate(processField, value));
+      predicates.add(buildEqualityPredicate(parentField, value));
+    }
+    if (processField === "object.id") continue;
+    const parentValue = event[parentField];
+    if (parentValue !== undefined && parentValue !== null && parentValue !== "") {
+      predicates.add(buildEqualityPredicate(processField, processIdValue(processField, parentValue)));
+    }
+  }
+  const broad = buildProcessSearchPredicate(host);
+  return predicates.size ? andPredicates(broad, orPredicates([...predicates])) : broad;
+}
+
 function processIdentity(event) {
   const host = String(event["event_src.host"] ?? "unknown");
   const guid = first(event, ["object.process.guid", "subject.process.guid"]);

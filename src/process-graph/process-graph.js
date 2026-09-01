@@ -8,8 +8,6 @@ const byId = (id) => document.getElementById(id);
 const canvas = byId("process-canvas");
 const context = canvas.getContext("2d");
 const tooltip = byId("process-tooltip");
-let tooltipHideTimer = null;
-let tooltipHovered = false;
 const params = new URLSearchParams(location.search);
 let sourceTabId = Number(params.get("tabId"));
 const snapshotId = params.get("snapshotId");
@@ -33,6 +31,7 @@ const state = {
   dragNode: null,
   pan: null,
   pointerDown: null,
+  tooltipPinned: false,
   search: "",
   spatialIndex: new ProcessSpatialIndex(),
   spatialDirty: true,
@@ -413,26 +412,41 @@ function tooltipRow(label, value) {
   return row;
 }
 
-function scheduleTooltipHide() {
-  clearTimeout(tooltipHideTimer);
-  tooltipHideTimer = setTimeout(() => {
-    if (!tooltipHovered) tooltip.hidden = true;
-  }, 180);
+function closeTooltip() {
+  state.tooltipPinned = false;
+  tooltip.classList.remove("pinned");
+  tooltip.hidden = true;
 }
 
-function showTooltip(node, clientX, clientY) {
+function showTooltip(node, clientX, clientY, { pinned = false } = {}) {
+  if (state.tooltipPinned && !pinned) return;
   if (!node) {
-    scheduleTooltipHide();
+    closeTooltip();
     return;
   }
-  clearTimeout(tooltipHideTimer);
+  state.tooltipPinned = pinned;
+  tooltip.classList.toggle("pinned", pinned);
   tooltip.replaceChildren();
   const title = document.createElement("h2");
   title.textContent = node.label;
   const relations = document.createElement("p");
-  relations.textContent = `${node.connectionCount} связей · клик откроет событие в SIEM · правый клик прикрепит процесс`;
+  relations.textContent = `${node.connectionCount} связей · клик откроет событие в SIEM · правый клик закрепит карточку`;
   tooltip.append(title, relations);
   for (const item of node.details) tooltip.append(tooltipRow(item.label, item.value));
+  if (pinned) {
+    const actions = document.createElement("div");
+    actions.className = "tooltip-actions";
+    const attach = document.createElement("button");
+    attach.type = "button";
+    attach.textContent = "Прикрепить процесс";
+    attach.addEventListener("click", () => pinProcessNode(node).catch((error) => setStatus(error.message, true)));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Закрыть карточку";
+    close.addEventListener("click", closeTooltip);
+    actions.append(attach, close);
+    tooltip.append(actions);
+  }
   tooltip.hidden = false;
   const margin = 14;
   const left = Math.min(innerWidth - tooltip.offsetWidth - margin, clientX + 16);
@@ -532,20 +546,10 @@ canvas.addEventListener("pointercancel", () => {
 canvas.addEventListener("pointerleave", () => {
   if (!state.dragNode && !state.pan) {
     state.hovered = null;
-    scheduleTooltipHide();
+    if (!state.tooltipPinned) tooltip.hidden = true;
     canvas.classList.remove("node-hover");
     scheduleDraw();
   }
-});
-
-tooltip.addEventListener("pointerenter", () => {
-  tooltipHovered = true;
-  clearTimeout(tooltipHideTimer);
-});
-
-tooltip.addEventListener("pointerleave", () => {
-  tooltipHovered = false;
-  scheduleTooltipHide();
 });
 
 canvas.addEventListener("wheel", (event) => {
@@ -564,7 +568,11 @@ canvas.addEventListener("contextmenu", (event) => {
   event.preventDefault();
   const position = pointerPosition(event);
   const node = hitTest(position.x, position.y);
-  if (node) pinProcessNode(node).catch((error) => setStatus(error.message, true));
+  if (node) showTooltip(node, event.clientX, event.clientY, { pinned: true });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.tooltipPinned) closeTooltip();
 });
 
 function updateLayoutButtons() {

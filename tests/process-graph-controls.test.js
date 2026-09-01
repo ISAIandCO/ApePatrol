@@ -10,12 +10,13 @@ describe("process graph controls", () => {
     expect(script).toContain("{ nodeLimit: 10_000, resumeLimit: true }");
   });
 
-  it("opens nodes only with the primary button and keeps long tooltips interactive", async () => {
+  it("opens nodes only with the primary button and makes only pinned tooltips interactive", async () => {
     const script = await readFile(new URL("../src/process-graph/process-graph.js", import.meta.url), "utf8");
     const css = await readFile(new URL("../src/static/process-graph.css", import.meta.url), "utf8");
     expect(script).toContain("if (event.button !== 0) return;");
-    expect(script).toContain('tooltip.addEventListener("pointerenter"');
+    expect(script).toContain("{ pinned: true }");
+    expect(script).toContain('attach.textContent = "Прикрепить процесс"');
     expect(css).toContain("overscroll-behavior: contain");
-    expect(css).toContain("pointer-events: auto");
+    expect(css).toContain("#process-tooltip.pinned { pointer-events: auto; }");
   });
 });
