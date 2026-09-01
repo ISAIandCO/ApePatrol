@@ -13,7 +13,7 @@ const argValue = (name) => {
 const outDir = path.resolve(root, argValue("--out-dir") ?? "dist/firefox");
 const selfHosted = process.argv.includes("--self-hosted");
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const updateUrl = `https://github.com/${process.env.GITHUB_REPOSITORY || "ISAIandCO/siem-monkey-firefox"}/releases/latest/download/updates.json`;
+const updateUrl = `https://github.com/${process.env.GITHUB_REPOSITORY || "ISAIandCO/ApePatrol"}/releases/latest/download/updates.json`;
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
