@@ -491,7 +491,7 @@ function renderRelated() {
 async function openProcessGraph(layout) {
   if (!state.tab?.id) throw new Error("No active SIEM tab");
   byId("process-output").textContent = "Получаю процессы и создаю автономный снимок…";
-  const response = await sendToContent({ type: "siem:process" });
+  const response = await sendToContent({ type: "siem:process", mode: layout === "step" ? "step" : "broad" });
   const saved = await browser.runtime.sendMessage({
     type: "graph:snapshot:save",
     snapshot: {
@@ -593,6 +593,7 @@ byId("copy-link").addEventListener("click", async () => navigator.clipboard.writ
 byId("open-rule").addEventListener("click", () => state.knowledgeBaseUrl && browser.runtime.sendMessage({ type: "tabs:open", url: state.knowledgeBaseUrl }));
 byId("open-process-graph").addEventListener("click", () => openProcessGraph("force").catch((error) => showError(byId("process-output"), error)));
 byId("open-process-timeline").addEventListener("click", () => openProcessGraph("timeline").catch((error) => showError(byId("process-output"), error)));
+byId("open-process-step").addEventListener("click", () => openProcessGraph("step").catch((error) => showError(byId("process-output"), error)));
 byId("open-workspace").addEventListener("click", () => browser.tabs.create({ url: browser.runtime.getURL("workspace.html") }));
 for (const [id, type] of [["pin-current-event", "event"], ["pin-current-host", "host"], ["pin-current-account", "account"], ["pin-current-incident", "incident"]]) {
   byId(id).addEventListener("click", () => pinCurrent(type).catch((error) => showError(byId("workspace-output"), error)));

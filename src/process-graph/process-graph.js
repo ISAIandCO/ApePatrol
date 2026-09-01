@@ -1,9 +1,9 @@
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { buildProcessGraphView } from "../siem/process/view-model.js";
-import { applyRepulsion, DEFAULT_FORCE_SETTINGS, forceIterationLimit, hashNumber, normalizeForceSettings, stabilizeForceNode } from "./force-layout.js";
+import { applyRepulsion, DEFAULT_FORCE_SETTINGS, forceIterationLimit, normalizeForceSettings, seedComponentLayout, stabilizeForceNode } from "./force-layout.js";
 import { ProcessSpatialIndex } from "./spatial-index.js";
-import { filterProcessNodes } from "../siem/process/filters.js";
+import { compileProcessTextFilter, filterProcessNodes, processFilterError } from "../siem/process/filters.js";
 
 const byId = (id) => document.getElementById(id);
 const canvas = byId("process-canvas");
@@ -25,7 +25,7 @@ const state = {
   nodes: [],
   edges: [],
   nodeMap: new Map(),
-  layout: params.get("layout") === "timeline" ? "timeline" : "force",
+  layout: ["force", "timeline", "step"].includes(params.get("layout")) ? params.get("layout") : "force",
   width: 1,
   height: 1,
   pixelRatio: 1,
@@ -40,6 +40,7 @@ const state = {
   pointerDown: null,
   tooltipPinned: false,
   search: "",
+  searchMatcher: () => true,
   spatialIndex: new ProcessSpatialIndex(),
   spatialDirty: true,
   simulationIterations: 0,
@@ -53,7 +54,10 @@ const state = {
   nodeLimit: 1000,
   sliderRange: { from: null, to: null },
   forceSettings: loadForceSettings(),
+  layoutBoundary: 1000,
 };
+
+function usesForceLayout() { return state.layout !== "timeline"; }
 
 function visibleNodes() { return state.nodes.filter((node) => state.visibleNodeIds.has(node.id)); }
 
@@ -61,7 +65,10 @@ function updateVisibleNodes() {
   const selectedId = state.nodes.find((node) => node.selected)?.id ?? null;
   state.visibleNodeIds = filterProcessNodes(state.nodes, state.filters, selectedId);
   state.spatialDirty = true;
-  byId("filter-count").textContent = `Показано ${state.visibleNodeIds.size} из ${state.nodes.length} процессов`;
+  const invalid = processFilterError(state.filters);
+  byId("filter-count").textContent = invalid
+    ? `Некорректное регулярное выражение: ${invalid.message}`
+    : `Показано ${state.visibleNodeIds.size} из ${state.nodes.length} процессов`;
   scheduleDraw();
 }
 
@@ -71,25 +78,7 @@ function setStatus(message, error = false) {
 }
 
 function seedForceLayout() {
-  const roots = state.nodes.filter((node) => !node.parentId);
-  const rootIndex = new Map(roots.map((node, index) => [node.id, index]));
-  for (const node of [...state.nodes].sort((a, b) => a.depth - b.depth || a.time - b.time)) {
-    const parent = state.nodeMap.get(node.parentId);
-    const angle = (hashNumber(node.id) / 0xffffffff) * Math.PI * 2;
-    if (parent) {
-      const distance = state.forceSettings.linkDistance + Math.min(node.depth, 8) * 7;
-      node.x = parent.x + Math.cos(angle) * distance;
-      node.y = parent.y + Math.sin(angle) * distance;
-    } else {
-      const index = rootIndex.get(node.id) ?? 0;
-      const rootAngle = roots.length > 1 ? (index / roots.length) * Math.PI * 2 : angle;
-      const distance = roots.length > 1 ? 90 + Math.sqrt(index) * 35 : 0;
-      node.x = Math.cos(rootAngle) * distance;
-      node.y = Math.sin(rootAngle) * distance;
-    }
-    node.vx = 0;
-    node.vy = 0;
-  }
+  state.layoutBoundary = seedComponentLayout(state.nodes, state.forceSettings.linkDistance);
 }
 
 function seedTimelineLayout() {
@@ -164,7 +153,7 @@ function fitGraph() {
 
 function simulationStep() {
   const alpha = state.alpha;
-  const boundary = Math.max(1000, Math.sqrt(state.nodes.length) * 160);
+  const boundary = state.layoutBoundary;
   for (const node of state.nodes) stabilizeForceNode(node, 0, boundary, true);
   for (const edge of state.edges) {
     const source = state.nodeMap.get(edge.sourceId);
@@ -174,7 +163,7 @@ function simulationStep() {
     const dy = target.y - source.y;
     const distance = Math.sqrt(dx * dx + dy * dy) || 1;
     const desired = state.forceSettings.linkDistance + source.radius + target.radius;
-    const force = ((distance - desired) / distance) * .018 * state.forceSettings.linkStrength * alpha;
+    const force = ((distance - desired) / distance) * .035 * state.forceSettings.linkStrength * alpha;
     source.vx += dx * force;
     source.vy += dy * force;
     target.vx -= dx * force;
@@ -188,6 +177,15 @@ function simulationStep() {
   state.simulationIterations += 1;
   if (state.simulationIterations >= forceIterationLimit(state.nodes.length)) state.alpha = 0;
   state.spatialDirty = true;
+}
+
+function simulationBatch() {
+  const maximumSteps = state.nodes.length < 600 ? 8 : state.nodes.length < 2500 ? 4 : 2;
+  const deadline = performance.now() + 10;
+  for (let step = 0; step < maximumSteps && state.alpha > .012; step += 1) {
+    simulationStep();
+    if (performance.now() >= deadline) break;
+  }
 }
 
 function themeColors() {
@@ -271,7 +269,7 @@ function truncateLabel(value, length = 30) {
 function drawNode(node, colors) {
   const point = worldToScreen(node);
   const radius = Math.max(2.2, node.radius * state.scale);
-  const matches = !state.search || node.searchText.includes(state.search);
+  const matches = !state.search || state.searchMatcher(node.searchText);
   const active = node.selected || node === state.hovered;
   context.fillStyle = node.selected ? colors.selected : matches ? colors.node : colors.nodeDim;
   context.strokeStyle = colors.stroke;
@@ -318,9 +316,9 @@ function draw() {
 
 function frame() {
   state.frame = null;
-  if (state.layout === "force" && state.alpha > .012) simulationStep();
+  if (usesForceLayout() && state.alpha > .012) simulationBatch();
   draw();
-  if (state.layout === "force" && state.alpha > .012) scheduleDraw();
+  if (usesForceLayout() && state.alpha > .012) scheduleDraw();
   else if (state.autoFitPending) {
     state.autoFitPending = false;
     fitGraph();
@@ -377,6 +375,16 @@ function showTooltip(node, clientX, clientY, { pinned = false } = {}) {
   if (pinned) {
     const actions = document.createElement("div");
     actions.className = "tooltip-actions";
+    if (state.layout === "step") {
+      for (const [direction, label] of [["parents", "Найти родителя"], ["children", "Найти дочерние"], ["both", "Найти оба направления"]]) {
+        const expand = document.createElement("button");
+        expand.type = "button";
+        expand.textContent = label;
+        expand.disabled = Boolean(state.activeRequestId) || state.stale;
+        expand.addEventListener("click", () => expandNodeGraph(node, direction).catch((error) => setStatus(error.message, true)));
+        actions.append(expand);
+      }
+    }
     const attach = document.createElement("button");
     attach.type = "button";
     attach.textContent = "Прикрепить процесс";
@@ -474,7 +482,7 @@ canvas.addEventListener("pointerup", (event) => {
   state.dragNode = null;
   state.pan = null;
   state.pointerDown = null;
-  if (state.layout === "force") startSimulation();
+  if (usesForceLayout()) startSimulation();
   if (shouldOpen) openNodeEvent(node).catch((error) => setStatus(error.message, true));
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
 });
@@ -519,13 +527,13 @@ document.addEventListener("keydown", (event) => {
 });
 
 function updateLayoutButtons() {
-  for (const layout of ["force", "timeline"]) {
+  for (const layout of ["force", "timeline", "step"]) {
     const button = byId(`layout-${layout}`);
     const active = state.layout === layout;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
-  byId("force-controls").disabled = state.layout !== "force";
+  byId("force-controls").disabled = !usesForceLayout();
 }
 
 const forceControls = Object.freeze({
@@ -545,18 +553,29 @@ function renderForceControls() {
 function updateForceSetting(name, value, { fitWhenDone = false } = {}) {
   state.forceSettings = normalizeForceSettings({ ...state.forceSettings, [name]: value });
   renderForceControls();
-  if (state.layout === "force" && state.nodes.length) startSimulation({ fitWhenDone });
+  if (usesForceLayout() && state.nodes.length) startSimulation({ fitWhenDone });
 }
 
 function persistForceSettings() {
   try { localStorage.setItem(FORCE_STORAGE_KEY, JSON.stringify(state.forceSettings)); } catch { /* optional preference */ }
 }
 
-function selectLayout(layout) {
+async function selectLayout(layout) {
+  if (!["force", "timeline", "step"].includes(layout)) return;
+  const requestedMode = layout === "step" ? "step" : "broad";
+  const currentMode = state.response?.queryMetadata?.mode ?? "broad";
+  if (requestedMode !== currentMode && (!Number.isInteger(sourceTabId) || sourceTabId <= 0 || state.stale)) {
+    throw new Error("Для смены режима нужна подключённая SIEM-вкладка");
+  }
   state.layout = layout;
   updateLayoutButtons();
+  updateExpansionUi();
+  if (requestedMode !== currentMode) {
+    await reloadGraph();
+    return;
+  }
   seedLayout();
-  if (layout === "force") startSimulation({ fitWhenDone: true });
+  if (usesForceLayout()) startSimulation({ fitWhenDone: true });
   else {
     state.alpha = 0;
     state.autoFitPending = false;
@@ -593,7 +612,7 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
   updateExpansionUi();
   updateTimeSliders();
   seedLayout();
-  if (state.layout === "force") startSimulation({ fitWhenDone: true });
+  if (usesForceLayout()) startSimulation({ fitWhenDone: true });
   requestAnimationFrame(fitGraph);
 }
 
@@ -606,12 +625,17 @@ function markGraphStale(message = "Исходная вкладка SIEM закр
 function updateExpansionUi() {
   const loading = Boolean(state.activeRequestId);
   const sourceAvailable = Number.isInteger(sourceTabId) && sourceTabId > 0 && !state.stale;
-  document.querySelectorAll("[data-expand]").forEach((button) => { button.disabled = loading || !sourceAvailable; });
+  const stepMode = state.layout === "step";
+  document.querySelectorAll("[data-expand]").forEach((button) => {
+    button.hidden = stepMode;
+    button.disabled = loading || !sourceAvailable;
+  });
+  byId("expand-step-label").firstChild.textContent = stepMode ? "Диапазон поиска у узла " : "Шаг ";
   byId("cancel-expand").disabled = !loading;
   byId("reload-graph").disabled = loading || !sourceAvailable;
   byId("reconnect-graph").hidden = sourceAvailable;
   const limitReached = Boolean(state.response?.queryMetadata?.limitReached || state.graph?.truncated);
-  byId("continue-limit").hidden = !limitReached || state.nodeLimit >= 10_000 || !sourceAvailable;
+  byId("continue-limit").hidden = stepMode || !limitReached || state.nodeLimit >= 10_000 || !sourceAvailable;
   byId("partial-indicator").hidden = !state.response?.queryMetadata?.partial;
   const metadata = state.response?.queryMetadata;
   byId("graph-range").textContent = metadata?.timeFrom && metadata?.timeTo
@@ -651,6 +675,37 @@ async function expandGraph(direction, { nodeLimit = state.nodeLimit, resumeLimit
       existingEvents: state.graph.nodes.map((node) => node.event),
     });
     if (!response?.ok) throw new Error(response?.error ?? "Не удалось расширить граф");
+    applyGraphResponse(response);
+    await persistCurrentSnapshot();
+  } finally {
+    state.activeRequestId = null;
+    byId("loading").hidden = true;
+    updateExpansionUi();
+  }
+}
+
+async function expandNodeGraph(node, direction) {
+  if (state.activeRequestId) return;
+  if (state.layout !== "step") throw new Error("Точечное расширение доступно в пошаговом режиме");
+  if (!Number.isInteger(sourceTabId) || sourceTabId <= 0 || state.stale) throw new Error("Сначала подключите доступную SIEM-вкладку");
+  const requestId = crypto.randomUUID();
+  state.activeRequestId = requestId;
+  updateExpansionUi();
+  byId("loading").hidden = false;
+  setStatus(`Ищу ${direction === "parents" ? "родителя" : direction === "children" ? "дочерние процессы" : "родителя и дочерние процессы"} для ${node.label}…`);
+  try {
+    const response = await browser.tabs.sendMessage(sourceTabId, {
+      type: "siem:process:expand-node",
+      requestId,
+      direction,
+      stepSeconds: Number(byId("expand-step").value),
+      nodeLimit: state.nodeLimit,
+      nodeEvent: node.event,
+      sourceEvent: state.response.sourceEvent,
+      queryMetadata: state.response.queryMetadata,
+      existingEvents: state.graph.nodes.map((item) => item.event),
+    });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось расширить цепочку процесса");
     applyGraphResponse(response);
     await persistCurrentSnapshot();
   } finally {
@@ -722,7 +777,7 @@ async function reloadGraph() {
   byId("loading").hidden = false;
   setStatus("Получаю события процессов из MaxPatrol SIEM…");
   try {
-    const response = await browser.tabs.sendMessage(sourceTabId, { type: "siem:process" });
+    const response = await browser.tabs.sendMessage(sourceTabId, { type: "siem:process", mode: state.layout === "step" ? "step" : "broad" });
     if (!response?.ok) throw new Error(response?.error ?? "Расширение не получило данные процессов");
     applyGraphResponse(response);
     await persistCurrentSnapshot();
@@ -745,8 +800,9 @@ async function initializeGraph() {
   if (!snapshotLoaded) await reloadGraph();
 }
 
-byId("layout-force").addEventListener("click", () => selectLayout("force"));
-byId("layout-timeline").addEventListener("click", () => selectLayout("timeline"));
+byId("layout-force").addEventListener("click", () => selectLayout("force").catch((error) => setStatus(error.message, true)));
+byId("layout-timeline").addEventListener("click", () => selectLayout("timeline").catch((error) => setStatus(error.message, true)));
+byId("layout-step").addEventListener("click", () => selectLayout("step").catch((error) => setStatus(error.message, true)));
 byId("fit-graph").addEventListener("click", fitGraph);
 byId("reload-graph").addEventListener("click", () => reloadGraph().catch((error) => {
   byId("loading").hidden = true;
@@ -760,7 +816,10 @@ for (const button of document.querySelectorAll("[data-expand]")) {
 byId("cancel-expand").addEventListener("click", () => cancelExpansion().catch((error) => setStatus(error.message, true)));
 byId("continue-limit").addEventListener("click", () => expandGraph(state.response?.queryMetadata?.lastDirection ?? "both", { nodeLimit: 10_000, resumeLimit: true }).catch((error) => setStatus(error.message, true)));
 byId("process-search").addEventListener("input", (event) => {
-  state.search = event.target.value.trim().toLowerCase();
+  state.search = event.target.value.trim();
+  const compiled = compileProcessTextFilter(state.search);
+  state.searchMatcher = compiled.test;
+  event.target.setAttribute("aria-invalid", String(Boolean(compiled.error)));
   scheduleDraw();
 });
 for (const [name, control] of Object.entries(forceControls)) {
@@ -791,11 +850,16 @@ function readFilters() {
     pid: byId("filter-pid").value.trim(),
     host: byId("filter-host").value.trim(),
     eventType: byId("filter-event-type").value.trim(),
+    eventText: byId("filter-event-text").value.trim(),
     relations: byId("filter-relations").value,
     hideIsolated: byId("filter-hide-isolated").checked,
     timeFrom: timeValue("filter-time-from") ?? state.sliderRange.from,
     timeTo: timeValue("filter-time-to") ?? state.sliderRange.to,
   };
+  const invalid = processFilterError(state.filters);
+  const fieldIds = { name: "filter-process-name", path: "filter-process-path", account: "filter-account", pid: "filter-pid", host: "filter-host", eventType: "filter-event-type", eventText: "filter-event-text" };
+  for (const id of Object.values(fieldIds)) byId(id).removeAttribute("aria-invalid");
+  if (invalid) byId(fieldIds[invalid.field]).setAttribute("aria-invalid", "true");
   updateVisibleNodes();
 }
 
@@ -806,13 +870,13 @@ for (const id of ["time-slider-start", "time-slider-end"]) {
   });
 }
 
-for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) {
+for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-event-text", "filter-time-from", "filter-time-to"]) {
   byId(id).addEventListener("input", readFilters);
 }
 byId("filter-relations").addEventListener("change", readFilters);
 byId("filter-hide-isolated").addEventListener("change", readFilters);
 byId("filter-reset").addEventListener("click", () => {
-  for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-time-from", "filter-time-to"]) byId(id).value = "";
+  for (const id of ["filter-process-name", "filter-process-path", "filter-account", "filter-pid", "filter-host", "filter-event-type", "filter-event-text", "filter-time-from", "filter-time-to"]) byId(id).value = "";
   byId("filter-relations").value = "all";
   byId("filter-hide-isolated").checked = false;
   byId("time-slider-start").value = "0";

@@ -14,6 +14,7 @@ describe("Firefox popup sizing", () => {
     expect(script).toContain("browser.runtime.getURL(`process-graph.html?");
     expect(script).toContain('openProcessGraph("force")');
     expect(script).toContain('openProcessGraph("timeline")');
+    expect(script).toContain('openProcessGraph("step")');
     expect(script).not.toContain("orderProcessTree");
   });
 });
