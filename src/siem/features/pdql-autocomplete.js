@@ -32,7 +32,9 @@ export class PdqlAutocompleteFeature {
           ? metadata.fields.filter((field) => field?.filterable === true && typeof field.name === "string").map((field) => field.name)
           : [];
         this.items = [...fields, ...PDQL_KEYWORDS];
-      }).catch(() => {});
+      }).catch(() => {
+        this.loadPromise = null;
+      });
     }
     return this.loadPromise;
   }
@@ -64,7 +66,10 @@ export class PdqlAutocompleteFeature {
     editor.setAttribute("aria-controls", list.id);
     editor.setAttribute("aria-expanded", "false");
 
-    const input = () => this.render(editor);
+    const input = () => {
+      this.render(editor);
+      this.loadItems().then(() => this.render(editor));
+    };
     const keydown = (event) => this.onKeydown(event, editor);
     const blur = () => setTimeout(() => this.hide(editor), 0);
     editor.addEventListener("input", input);

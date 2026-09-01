@@ -51,4 +51,23 @@ describe("incremental DOM processing", () => {
     expect(feature.onDomChanged).toHaveBeenCalledTimes(1);
     controller.stop();
   });
+
+  it("refreshes features immediately when an on-demand editor receives focus", () => {
+    document.body.innerHTML = '<textarea id="pdqlFilterText"></textarea>';
+    const editor = document.querySelector("textarea");
+    const adapter = {
+      getRoot: () => document.body,
+      getObservationRoots: () => [document.body],
+      refreshFieldRoots: vi.fn(),
+      getEventUuid: () => null,
+      extractEvent: () => ({}),
+    };
+    const feature = { onDomChanged: vi.fn(), unmount: vi.fn() };
+    const controller = new SiemDomController(adapter, [feature]);
+    controller.start();
+    feature.onDomChanged.mockClear();
+    editor.focus();
+    expect(feature.onDomChanged).toHaveBeenCalledTimes(1);
+    controller.stop();
+  });
 });

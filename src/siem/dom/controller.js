@@ -8,6 +8,8 @@ export class SiemDomController {
     this.lastUuid = null;
     this.pendingRecords = [];
     this.observedRoots = new WeakSet();
+    this.focusRoots = new Set();
+    this.handleFocus = () => this.flush();
   }
 
   start() {
@@ -31,6 +33,10 @@ export class SiemDomController {
         this.observer.observe(root, { childList: true, subtree: true });
         this.observedRoots.add(root);
       } catch { /* A detached legacy frame can disappear between discovery and observe(). */ }
+      if (!this.focusRoots.has(root)) {
+        root.addEventListener?.("focusin", this.handleFocus, true);
+        this.focusRoots.add(root);
+      }
     }
   }
 
@@ -41,6 +47,8 @@ export class SiemDomController {
   }
 
   flush() {
+    clearTimeout(this.timer);
+    this.timer = null;
     const records = this.pendingRecords.splice(0);
     this.adapter.refreshFieldRoots?.(records);
     this.observeRoots();
@@ -60,6 +68,8 @@ export class SiemDomController {
     this.observer?.disconnect();
     this.observer = null;
     this.observedRoots = new WeakSet();
+    for (const root of this.focusRoots) root.removeEventListener?.("focusin", this.handleFocus, true);
+    this.focusRoots.clear();
     this.pendingRecords = [];
     for (const feature of this.features) feature.unmount?.();
   }

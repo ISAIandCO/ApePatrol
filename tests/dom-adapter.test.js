@@ -143,6 +143,14 @@ describe("MP SIEM DOM adapter fixtures", () => {
     document.body.innerHTML = await fixture("asset-field");
     expect(new SiemDomAdapter().getAssetFields()).toBeTruthy();
   });
+  it("prefers the active filter editor when MaxPatrol keeps an older editor mounted", () => {
+    document.body.innerHTML = `
+      <textarea id="pdqlFilterText"></textarea>
+      <events-filter-popover><textarea data-testid="filter-editor"></textarea></events-filter-popover>`;
+    const activeEditor = document.querySelector("events-filter-popover textarea");
+    activeEditor.focus();
+    expect(new SiemDomAdapter().getFilterEditor()).toBe(activeEditor);
+  });
   it("mounts IOC description only after resolving the configured list", async () => {
     document.body.innerHTML = await fixture("table-list");
     globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, result: {} }) } };

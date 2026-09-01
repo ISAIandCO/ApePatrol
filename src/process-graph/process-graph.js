@@ -1,6 +1,7 @@
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { buildProcessGraphView } from "../siem/process/view-model.js";
+import { applyRepulsion, forceIterationLimit, hashNumber, stabilizeForceNode } from "./force-layout.js";
 import { ProcessSpatialIndex } from "./spatial-index.js";
 import { filterProcessNodes } from "../siem/process/filters.js";
 
@@ -36,6 +37,7 @@ const state = {
   spatialIndex: new ProcessSpatialIndex(),
   spatialDirty: true,
   simulationIterations: 0,
+  autoFitPending: false,
   stale: false,
   snapshotCreatedAt: null,
   visibleNodeIds: new Set(),
@@ -59,15 +61,6 @@ function updateVisibleNodes() {
 function setStatus(message, error = false) {
   byId("status").textContent = message;
   byId("status").classList.toggle("error", error);
-}
-
-function hashNumber(value) {
-  let hash = 2166136261;
-  for (const char of String(value)) {
-    hash ^= char.codePointAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 function seedForceLayout() {
@@ -155,74 +148,17 @@ function fitGraph() {
   const graphWidth = Math.max(1, maximumX - minimumX);
   const graphHeight = Math.max(1, maximumY - minimumY);
   const padding = 72;
-  state.scale = Math.max(.08, Math.min(2.2, (state.width - padding * 2) / graphWidth, (state.height - padding * 2) / graphHeight));
+  state.scale = Math.max(.012, Math.min(2.2, (state.width - padding * 2) / graphWidth, (state.height - padding * 2) / graphHeight));
   state.offsetX = state.width / 2 - ((minimumX + maximumX) / 2) * state.scale;
   state.offsetY = state.height / 2 - ((minimumY + maximumY) / 2) * state.scale;
   state.spatialDirty = true;
   scheduleDraw();
 }
 
-function repelPair(first, second, alpha) {
-  let dx = second.x - first.x;
-  let dy = second.y - first.y;
-  let distanceSquared = dx * dx + dy * dy;
-  if (distanceSquared < .01) {
-    dx = ((hashNumber(first.id) % 13) - 6) / 10;
-    dy = ((hashNumber(second.id) % 13) - 6) / 10;
-    distanceSquared = dx * dx + dy * dy || 1;
-  }
-  const distance = Math.sqrt(distanceSquared);
-  const minimum = first.radius + second.radius + 12;
-  const collision = distance < minimum ? (minimum - distance) * .13 : 0;
-  const charge = distance < 320 ? Math.min(2.8, 950 / distanceSquared) : 0;
-  const force = (collision + charge) * alpha;
-  const forceX = (dx / distance) * force;
-  const forceY = (dy / distance) * force;
-  first.vx -= forceX;
-  first.vy -= forceY;
-  second.vx += forceX;
-  second.vy += forceY;
-}
-
-function applyRepulsion(alpha) {
-  if (state.nodes.length <= 280) {
-    for (let firstIndex = 0; firstIndex < state.nodes.length; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < state.nodes.length; secondIndex += 1) {
-        repelPair(state.nodes[firstIndex], state.nodes[secondIndex], alpha);
-      }
-    }
-    return;
-  }
-  const cellSize = 180;
-  const cells = new Map();
-  for (const node of state.nodes) {
-    const cellX = Math.floor(node.x / cellSize);
-    const cellY = Math.floor(node.y / cellSize);
-    const key = `${cellX}:${cellY}`;
-    const cell = cells.get(key) ?? [];
-    cell.push(node);
-    cells.set(key, cell);
-  }
-  const compared = new Set();
-  for (const node of state.nodes) {
-    const cellX = Math.floor(node.x / cellSize);
-    const cellY = Math.floor(node.y / cellSize);
-    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-        for (const other of cells.get(`${cellX + offsetX}:${cellY + offsetY}`) ?? []) {
-          if (node === other) continue;
-          const key = node.id < other.id ? `${node.id}\n${other.id}` : `${other.id}\n${node.id}`;
-          if (compared.has(key)) continue;
-          compared.add(key);
-          repelPair(node, other, alpha);
-        }
-      }
-    }
-  }
-}
-
 function simulationStep() {
   const alpha = state.alpha;
+  const boundary = Math.max(1000, Math.sqrt(state.nodes.length) * 160);
+  for (const node of state.nodes) stabilizeForceNode(node, 0, boundary, true);
   for (const edge of state.edges) {
     const source = state.nodeMap.get(edge.sourceId);
     const target = state.nodeMap.get(edge.targetId);
@@ -237,20 +173,13 @@ function simulationStep() {
     target.vx -= dx * force;
     target.vy -= dy * force;
   }
-  applyRepulsion(alpha);
+  applyRepulsion(state.nodes, alpha);
   for (const node of state.nodes) {
-    node.vx += -node.x * .00035 * alpha;
-    node.vy += -node.y * .00035 * alpha;
-    if (node !== state.dragNode) {
-      node.vx *= .82;
-      node.vy *= .82;
-      node.x += node.vx;
-      node.y += node.vy;
-    }
+    stabilizeForceNode(node, alpha, boundary, node === state.dragNode);
   }
   state.alpha *= .982;
   state.simulationIterations += 1;
-  if (state.simulationIterations >= 300) state.alpha = 0;
+  if (state.simulationIterations >= forceIterationLimit(state.nodes.length)) state.alpha = 0;
   state.spatialDirty = true;
 }
 
@@ -385,11 +314,16 @@ function frame() {
   if (state.layout === "force" && state.alpha > .012) simulationStep();
   draw();
   if (state.layout === "force" && state.alpha > .012) scheduleDraw();
+  else if (state.autoFitPending) {
+    state.autoFitPending = false;
+    fitGraph();
+  }
 }
 
-function startSimulation() {
+function startSimulation({ fitWhenDone = false } = {}) {
   state.alpha = 1;
   state.simulationIterations = 0;
+  state.autoFitPending = fitWhenDone;
   scheduleDraw();
 }
 
@@ -490,6 +424,7 @@ function pointerPosition(event) {
 
 canvas.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
+  state.autoFitPending = false;
   const position = pointerPosition(event);
   const node = hitTest(position.x, position.y);
   state.pointerDown = { x: position.x, y: position.y, moved: false, node };
@@ -557,7 +492,8 @@ canvas.addEventListener("wheel", (event) => {
   const position = pointerPosition(event);
   const world = screenToWorld(position.x, position.y);
   const factor = Math.exp(-event.deltaY * .0012);
-  state.scale = Math.max(.05, Math.min(4, state.scale * factor));
+  state.autoFitPending = false;
+  state.scale = Math.max(.012, Math.min(4, state.scale * factor));
   state.offsetX = position.x - world.x * state.scale;
   state.offsetY = position.y - world.y * state.scale;
   state.spatialDirty = true;
@@ -588,8 +524,11 @@ function selectLayout(layout) {
   state.layout = layout;
   updateLayoutButtons();
   seedLayout();
-  if (layout === "force") startSimulation();
-  else state.alpha = 0;
+  if (layout === "force") startSimulation({ fitWhenDone: true });
+  else {
+    state.alpha = 0;
+    state.autoFitPending = false;
+  }
   fitGraph();
 }
 
@@ -622,7 +561,7 @@ function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null 
   updateExpansionUi();
   updateTimeSliders();
   seedLayout();
-  if (state.layout === "force") startSimulation();
+  if (state.layout === "force") startSimulation({ fitWhenDone: true });
   requestAnimationFrame(fitGraph);
 }
 
