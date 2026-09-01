@@ -7,6 +7,8 @@ import { loadOptionalPopupFeatures } from "./feature-loader.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../shared/ioc-batch.js";
 import { addAiAttachment, appendAiMessage, eventAiAttachment, normalizeAiChat } from "../shared/ai-chat.js";
+import { renderMarkdown } from "../shared/markdown.js";
+import { downloadText } from "../shared/download.js";
 
 const state = {
   tab: null,
@@ -48,20 +50,18 @@ function switchPanel(id) {
   saveTabSession();
 }
 
-function tabSessionKey() { return state.tab?.id ? `apepatrol-popup-tab:${state.tab.id}` : null; }
 function activePanel() { return document.querySelector(".panel.active")?.id ?? "event"; }
 function saveTabSession() {
-  const key = tabSessionKey();
-  if (!key) return;
-  browser.storage.session.set({ [key]: { activePanel: activePanel(), aiChat: normalizeAiChat(state.aiChat) } }).catch(console.error);
+  if (!state.tab?.id) return;
+  browser.runtime.sendMessage({ type: "tab-session:save", tabId: state.tab.id, session: { activePanel: activePanel(), aiChat: normalizeAiChat(state.aiChat) } }).catch(console.error);
 }
 
 async function loadTabSession() {
-  const key = tabSessionKey();
-  if (!key) return "event";
-  const stored = (await browser.storage.session.get(key))[key];
-  state.aiChat = normalizeAiChat(stored?.aiChat);
-  return typeof stored?.activePanel === "string" ? stored.activePanel : "event";
+  if (!state.tab?.id) return "event";
+  const response = await browser.runtime.sendMessage({ type: "tab-session:get", tabId: state.tab.id });
+  if (!response?.ok) throw new Error(response?.error ?? "Не удалось восстановить диалог вкладки");
+  state.aiChat = normalizeAiChat(response.session?.aiChat);
+  return response.session?.activePanel ?? "event";
 }
 
 function setPanelAvailability(id, available) {
@@ -137,7 +137,8 @@ function renderAiChat() {
     article.className = `ai-message ${message.role}`;
     const heading = document.createElement("strong");
     heading.textContent = message.role === "user" ? "Аналитик" : "SEC AI Assistant";
-    const content = document.createElement("p"); content.textContent = message.content;
+    const content = document.createElement("div"); content.className = "markdown-body";
+    renderMarkdown(content, message.content);
     article.append(heading, content);
     if (message.attachments.length) {
       const context = document.createElement("div"); context.className = "ai-attachments";
@@ -493,8 +494,7 @@ async function downloadEvent() {
   const timestamp = sanitizeFilenamePart(event.time);
   const uuid = sanitizeFilenamePart(event.uuid);
   const host = sanitizeFilenamePart(event["event_src.host"]);
-  const data = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(event, null, 2))}`;
-  await browser.downloads.download({ url: data, filename: `siem-event-${timestamp}-${uuid}-${host}.json`, saveAs: true });
+  await downloadText(JSON.stringify(event, null, 2), { filename: `siem-event-${timestamp}-${uuid}-${host}.json`, mime: "application/json" });
 }
 
 async function eventLink() {

@@ -27,7 +27,7 @@ function snapshot(index = 1) {
 }
 
 describe("autonomous process graph snapshots", () => {
-  it("round-trips a versioned graph in session storage", async () => {
+  it("round-trips a versioned graph in transient storage", async () => {
     const storage = memoryStorage();
     const saved = await saveGraphSnapshot(snapshot(), storage);
     const restored = await getGraphSnapshot(saved.id, storage);
@@ -48,7 +48,7 @@ describe("autonomous process graph snapshots", () => {
     await expect(saveGraphSnapshot(tooLarge, storage)).rejects.toThrow("too many");
   });
 
-  it("keeps only the ten newest session snapshots", async () => {
+  it("keeps only the ten newest snapshots", async () => {
     const storage = memoryStorage();
     for (let index = 0; index < 12; index += 1) await saveGraphSnapshot(snapshot(index), storage);
     expect(Object.keys(storage.data)).toHaveLength(10);

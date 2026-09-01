@@ -1,8 +1,8 @@
 import { andPredicates, buildEqualityPredicate, orPredicates } from "../../shared/pdql/builder.js";
 import { parseSiemTime } from "../../shared/time.js";
 
-const first = (event, names) => names.map((name) => event[name]).find((value) => value !== undefined && value !== null && value !== "");
-const asTime = (event) => parseSiemTime(event.time)?.valueOf() ?? 0;
+const first = (event, names) => names.map((name) => event?.[name]).find((value) => value !== undefined && value !== null && value !== "");
+const asTime = (event) => parseSiemTime(event?.time)?.valueOf() ?? 0;
 
 export function buildProcessSearchPredicate(host) {
   return andPredicates(
@@ -78,12 +78,30 @@ function latestPrior(candidates, node, minimumTime = -Infinity) {
   return candidate && candidate.time >= minimumTime ? candidate : null;
 }
 
-export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64, pidParentWindowMs = 24 * 60 * 60_000 } = {}) {
-  if (!Array.isArray(events) || events.length === 0) return { nodes: [], roots: [], truncated: false };
+function representsSourceProcess(event, sourceEvent) {
+  const sourceUuid = String(sourceEvent?.uuid ?? "");
+  if (sourceUuid && String(event?.uuid ?? "") === sourceUuid) return true;
+  if (String(event?.["event_src.host"] ?? "unknown") !== String(sourceEvent?.["event_src.host"] ?? "unknown")) return false;
+  const references = new Set(processReferences(event).map((reference) => `${reference.kind}:${reference.value}`));
+  const sourceReferences = processReferences(sourceEvent);
+  const preferred = sourceReferences.find((reference) => reference.kind === "guid") ?? sourceReferences[0];
+  return Boolean(preferred && references.has(`${preferred.kind}:${preferred.value}`));
+}
+
+export function buildProcessGraph(events, { maxNodes = 1000, maxDepth = 64, pidParentWindowMs = 24 * 60 * 60_000, sourceEvent = null } = {}) {
+  if (!Array.isArray(events)) return { nodes: [], roots: [], truncated: false };
+  if (!events.length && !processReferences(sourceEvent).length) return { nodes: [], roots: [], truncated: false };
   const sorted = [...events].sort((a, b) => asTime(a) - asTime(b));
+  const selected = sorted.slice(0, maxNodes);
+  if (processReferences(sourceEvent).length && !selected.some((event) => representsSourceProcess(event, sourceEvent))) {
+    const exact = sorted.find((event) => String(sourceEvent.uuid ?? "") && String(event.uuid ?? "") === String(sourceEvent.uuid)) ?? sourceEvent;
+    if (selected.length >= maxNodes) selected[selected.length - 1] = exact;
+    else selected.push(exact);
+    selected.sort((a, b) => asTime(a) - asTime(b));
+  }
   const nodes = new Map();
   let order = 0;
-  for (const event of sorted.slice(0, maxNodes)) {
+  for (const event of selected) {
     const identity = processIdentity(event);
     if (identity.kind === "guid" && nodes.has(identity.id)) continue;
     const host = String(event["event_src.host"] ?? "unknown");

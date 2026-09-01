@@ -218,7 +218,7 @@ async function buildProcessContext(client, event, settings) {
     result = await request({});
   }
   const events = result.events;
-  const graph = buildProcessGraph(events, settings.process);
+  const graph = buildProcessGraph(events, { ...settings.process, sourceEvent: event });
   return {
     ok: true,
     graph,
@@ -291,7 +291,7 @@ async function expandProcessContext(client, currentEvent, settings, message, sig
   }
   const incoming = results.flatMap((result) => result.events);
   const events = deduplicateProcessEvents(existing, incoming).slice(0, nodeLimit);
-  const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit });
+  const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
   const loadedRanges = mergeLoadedRanges(message.queryMetadata?.loadedRanges, ranges);
   const nextPending = results.flatMap((result, index) => result.limitReached ? [{
     direction: ranges[index].direction,

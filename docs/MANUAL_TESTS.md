@@ -68,7 +68,10 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] Прикрепить current event/host/account/incident из popup, IOC из field menu и process правым кликом из графа.
 - [ ] Закрыть SIEM и убедиться, что локальные snapshots остаются видимыми; event link корректно деградирует при отсутствии UUID/origin.
 - [ ] JSON/Markdown export пригоден для тикета и не содержит extension API keys/secrets.
+- [ ] JSON и Markdown расследования скачиваются через `blob:` URL без ошибки Firefox `Access denied for URL data:`.
 - [ ] Выбрать 2 и 3 event items: same/changed/only поля сгруппированы в process/network/account/host/rule/raw; copy JSON/Markdown работает.
+- [ ] AI-ответ отображает заголовки, списки, таблицы, ссылки и fenced code; сырой HTML остаётся текстом и не создаёт DOM-элементы.
+- [ ] В открытой карточке события доступны добавление в расследование, копирование JSON/ссылки и скачивание JSON.
 
 ## Rule Intelligence
 

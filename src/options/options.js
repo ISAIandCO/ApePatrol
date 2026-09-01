@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, normalizeProvider } from "../shared/settings.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { exportSettingsProfile, importSettingsProfile } from "../shared/profiles.js";
+import { downloadText } from "../shared/download.js";
 
 const state = { settings: structuredClone(DEFAULT_SETTINGS), managed: { active: false, lockedPaths: [] }, secretStatus: {}, permissionStatus: { dataCollection: [], endpointAccess: {} } };
 const IOC_API_ORIGINS = Object.freeze({
@@ -229,8 +230,7 @@ async function saveSecrets(secrets = collectSecrets()) {
 
 async function exportProfile() {
   const profile = exportSettingsProfile(collectSettings());
-  const url = `data:application/json;charset=utf-8,${encodeURIComponent(`${JSON.stringify(profile, null, 2)}\n`)}`;
-  await browser.downloads.download({ url, filename: `apepatrol-settings-profile-v${profile.schemaVersion}.json`, saveAs: true });
+  await downloadText(`${JSON.stringify(profile, null, 2)}\n`, { filename: `apepatrol-settings-profile-v${profile.schemaVersion}.json`, mime: "application/json" });
   setStatus("Non-secret settings profile exported.");
 }
 

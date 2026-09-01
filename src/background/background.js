@@ -9,6 +9,9 @@ import { deleteGraphSnapshot, getGraphSnapshot, saveGraphSnapshot, updateGraphSn
 import { normalizeAiToolCalls, prepareAiRequest } from "../shared/ai-payload.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 import { cancelIocBatch, runIocBatch } from "./ioc-batch.js";
+import { deleteTabSession, getTabSession, saveTabSession } from "./tab-sessions.js";
+import { downloadText } from "../shared/download.js";
+import { indexedDbSessionStorage } from "./session-state.js";
 import {
   createInvestigation,
   deleteWorkspace,
@@ -111,13 +114,16 @@ async function llmRequest(message) {
 }
 
 browser.runtime.onInstalled.addListener(() => refreshRegistrations().catch(console.error));
-browser.runtime.onStartup.addListener(() => refreshRegistrations().catch(console.error));
+browser.runtime.onStartup.addListener(() => {
+  refreshRegistrations().catch(console.error);
+  indexedDbSessionStorage.clear().catch(console.error);
+});
 browser.permissions.onAdded.addListener(() => refreshRegistrations().catch(console.error));
 browser.permissions.onRemoved.addListener(() => refreshRegistrations().catch(console.error));
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === "managed" && Object.keys(changes).length) refreshRegistrations().catch(console.error);
 });
-browser.tabs.onRemoved.addListener((tabId) => browser.storage.session.remove(`apepatrol-popup-tab:${tabId}`).catch(console.error));
+browser.tabs.onRemoved.addListener((tabId) => deleteTabSession(tabId).catch(console.error));
 
 browser.runtime.onMessage.addListener(async (message, sender) => {
   try {
@@ -157,6 +163,17 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
       case "graph:snapshot:delete":
         assertExtensionPage(sender);
         return { ok: true, deleted: await deleteGraphSnapshot(message.id) };
+      case "tab-session:get":
+        assertExtensionPage(sender);
+        return { ok: true, session: await getTabSession(message.tabId) };
+      case "tab-session:save":
+        assertExtensionPage(sender);
+        return { ok: true, session: await saveTabSession(message.tabId, message.session) };
+      case "downloads:text": {
+        const extensionSender = isExtensionPageSender(sender, browser.runtime.getURL("/"));
+        if (!extensionSender && !await senderIsConfiguredSiem(sender)) throw new Error("Download is restricted to ApePatrol and configured SIEM pages");
+        return { ok: true, downloadId: await downloadText(message.content, message.options) };
+      }
       case "tabs:open": {
         const url = parseSafeExternalUrl(message.url);
         if (!url) throw new Error("Unsafe URL was rejected");

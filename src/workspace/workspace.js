@@ -5,6 +5,8 @@ import { workspaceToJson, workspaceToMarkdown } from "../shared/workspace.js";
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { addAiAttachment, appendAiMessage, normalizeAiChat } from "../shared/ai-chat.js";
+import { renderMarkdown } from "../shared/markdown.js";
+import { downloadText } from "../shared/download.js";
 
 const byId = (id) => document.getElementById(id);
 const state = {
@@ -178,7 +180,8 @@ function renderAiWorkspace() {
   for (const message of state.aiChat.messages) {
     const article = document.createElement("article"); article.className = `workspace-ai-message ${message.role}`;
     const title = document.createElement("strong"); title.textContent = message.role === "user" ? "Аналитик" : "SEC AI Assistant";
-    const content = document.createElement("p"); content.textContent = message.content; article.append(title, content);
+    const content = document.createElement("div"); content.className = "markdown-body";
+    renderMarkdown(content, message.content); article.append(title, content);
     if (message.attachments.length) {
       const context = document.createElement("div"); context.className = "workspace-ai-attachments";
       for (const attachment of message.attachments) { const chip = document.createElement("span"); chip.textContent = `${attachment.type}: ${attachment.label}`; context.append(chip); }
@@ -350,8 +353,7 @@ async function removeItem(index) {
 
 async function download(text, extension, mime) {
   const workspace = selectedWorkspace();
-  const url = `data:${mime};charset=utf-8,${encodeURIComponent(text)}`;
-  await browser.downloads.download({ url, filename: `apepatrol-${sanitizeFilenamePart(workspace.title) || workspace.id}.${extension}`, saveAs: true });
+  await downloadText(text, { filename: `apepatrol-${sanitizeFilenamePart(workspace.title) || workspace.id}.${extension}`, mime });
 }
 
 function compareLabels(workspace) { return [...state.compareIndexes].sort((a, b) => a - b).map((index) => workspace.items[index].label); }

@@ -110,6 +110,27 @@ describe("MP SIEM DOM adapter fixtures", () => {
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: "enrichment:ioc", provider: "virustotal", ioc: { type: "ip", value: "8.8.8.8" } });
     feature.unmount();
   });
+  it("adds direct event actions to the open SIEM card", async () => {
+    document.body.innerHTML = `
+      <article class="event-card">
+        <mc-dt> uuid </mc-dt><mc-dd>event-toolbar</mc-dd>
+        <mc-dt> time </mc-dt><mc-dd>2026-09-01T10:00:00Z</mc-dd>
+        <mc-dt> event_src.host </mc-dt><mc-dd>host-1</mc-dd>
+      </article>`;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, workspace: { title: "IR-1" }, downloadId: 7 }) } };
+    const adapter = new SiemDomAdapter();
+    const feature = new EventFieldActions({ features: { eventActions: true, investigationWorkspace: true }, externalProviders: [] });
+    feature.onDomChanged({ event: adapter.extractEvent(), adapter });
+
+    const buttons = [...document.querySelectorAll(".apepatrol-event-actions button")];
+    expect(buttons.map((button) => button.textContent)).toEqual(["📌 В расследование", "Копировать JSON", "Копировать ссылку", "Скачать JSON"]);
+    buttons[0].click(); buttons[1].click(); buttons[3].click();
+    await vi.waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "downloads:text" })));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "workspace:item:add", item: expect.objectContaining({ type: "event", value: "event-toolbar" }) }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"uuid": "event-toolbar"'));
+    feature.unmount();
+  });
   it("detects native correlation description", async () => {
     document.body.innerHTML = await fixture("correlation-event");
     expect(new SiemDomAdapter().isNativeFeaturePresent("correlationDescription")).toBe(true);

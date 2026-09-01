@@ -1,3 +1,5 @@
+import { indexedDbSessionStorage } from "./session-state.js";
+
 const SNAPSHOT_PREFIX = "apepatrolGraphSnapshot:";
 const MAX_SNAPSHOTS = 10;
 const MAX_SNAPSHOT_BYTES = 12 * 1024 * 1024;
@@ -35,7 +37,7 @@ async function pruneSnapshots(storageArea) {
   if (expiredKeys.length) await storageArea.remove(expiredKeys);
 }
 
-export async function saveGraphSnapshot(input, storageArea = browser.storage.session) {
+export async function saveGraphSnapshot(input, storageArea = indexedDbSessionStorage) {
   const id = crypto.randomUUID();
   const snapshot = { id, ...validateSnapshot(input) };
   await storageArea.set({ [snapshotKey(id)]: snapshot });
@@ -43,13 +45,19 @@ export async function saveGraphSnapshot(input, storageArea = browser.storage.ses
   return { id, createdAt: snapshot.createdAt };
 }
 
-export async function getGraphSnapshot(id, storageArea = browser.storage.session) {
+export async function getGraphSnapshot(id, storageArea = indexedDbSessionStorage) {
   if (!ID_PATTERN.test(String(id ?? ""))) throw new TypeError("Invalid process graph snapshot ID");
   const key = snapshotKey(id);
-  return (await storageArea.get(key))[key] ?? null;
+  const snapshot = (await storageArea.get(key))[key];
+  if (snapshot || storageArea !== indexedDbSessionStorage) return snapshot ?? null;
+  const legacy = (await browser.storage.session.get(key))[key];
+  if (!legacy) return null;
+  await storageArea.set({ [key]: legacy });
+  await browser.storage.session.remove(key);
+  return legacy;
 }
 
-export async function updateGraphSnapshot(id, input, storageArea = browser.storage.session) {
+export async function updateGraphSnapshot(id, input, storageArea = indexedDbSessionStorage) {
   if (!ID_PATTERN.test(String(id ?? ""))) throw new TypeError("Invalid process graph snapshot ID");
   const existing = await getGraphSnapshot(id, storageArea);
   if (!existing) throw new Error("Process graph snapshot not found");
@@ -63,7 +71,7 @@ export async function updateGraphSnapshot(id, input, storageArea = browser.stora
   return { id: snapshot.id, createdAt: snapshot.createdAt, updatedAt: snapshot.updatedAt };
 }
 
-export async function deleteGraphSnapshot(id, storageArea = browser.storage.session) {
+export async function deleteGraphSnapshot(id, storageArea = indexedDbSessionStorage) {
   if (!ID_PATTERN.test(String(id ?? ""))) return false;
   await storageArea.remove(snapshotKey(id));
   return true;
