@@ -564,7 +564,7 @@ function selectLayout(layout) {
 }
 
 function applyGraphResponse(response, { stale = false, snapshotCreatedAt = null } = {}) {
-  const view = buildProcessGraphView(response.graph, response.sourceNodeId);
+  const view = buildProcessGraphView(response.graph, response.sourceNodeId, response.sourceEvent);
   state.graph = response.graph;
   state.response = response;
   state.origin = response.origin;
