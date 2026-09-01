@@ -29,4 +29,22 @@ describe("PDQL autocomplete", () => {
     feature.unmount();
     expect(document.querySelector("[data-apepatrol-ui='pdql-autocomplete']")).toBeNull();
   });
+
+  it("retries taxonomy loading after a transient metadata failure", async () => {
+    document.body.innerHTML = '<textarea id="pdqlFilterText"></textarea>';
+    const editor = document.querySelector("textarea");
+    const getEventMetadata = vi.fn()
+      .mockRejectedValueOnce(new Error("SIEM is still loading"))
+      .mockResolvedValue({ fields: [{ name: "event_src.host", filterable: true }] });
+    const feature = new PdqlAutocompleteFeature({ getEventMetadata });
+    feature.onDomChanged({ adapter: { getFilterEditor: () => editor } });
+    await vi.waitFor(() => expect(feature.loadPromise).toBeNull());
+    editor.focus();
+    editor.value = "event_s";
+    editor.setSelectionRange(7, 7);
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector("[role='option']")?.textContent).toBe("event_src.host"));
+    expect(getEventMetadata).toHaveBeenCalledTimes(2);
+    feature.unmount();
+  });
 });

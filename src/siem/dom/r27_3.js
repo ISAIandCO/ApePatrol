@@ -6,6 +6,7 @@ const EVENT_TIME_SELECTOR = [
   ".layout-padding_no-left.mc-sidebar-header__title.flex",
   "mc-sidebar-opened > header > .layout-row.flex > div > div",
 ].join(", ");
+const FILTER_EDITOR_SELECTOR = "textarea#pdqlFilterText, events-filter-popover textarea, textarea[data-testid*='filter'], pdql-editor textarea, [class*='filter-editor'] textarea";
 const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_.]*$/;
 
 function frameDocument(element) {
@@ -233,7 +234,10 @@ export class SiemDomAdapter {
     return header?.textContent?.trim().replace(",", "") || null;
   }
   getEventUuid() { return this.getEventField("uuid"); }
-  getFilterEditor() { return queryDeep("textarea#pdqlFilterText, events-filter-popover textarea, textarea[data-testid*='filter'], pdql-editor textarea, [class*='filter-editor'] textarea", this.getRoot()); }
+  getFilterEditor() {
+    const editors = queryAllDeep(FILTER_EDITOR_SELECTOR, this.getRoot());
+    return editors.find((editor) => editor.matches(":focus")) ?? editors[0] ?? null;
+  }
   getRuleCard() { return queryDeep("[data-testid*='correlation-rule'], [class*='correlation-rule']", this.getEventCard() ?? this.getRoot()); }
   getAssetFields() { return queryDeep("[data-testid*='asset'], [class*='asset']", this.getEventCard() ?? this.getRoot()); }
 
