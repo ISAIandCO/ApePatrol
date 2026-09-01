@@ -25,6 +25,13 @@ export function deduplicateProcessEvents(...batches) {
   });
 }
 
+export function prioritizeProcessEvents(priority, remaining, limit) {
+  const priorityKeys = new Set((Array.isArray(priority) ? priority : []).map(eventKey));
+  const events = deduplicateProcessEvents(priority, remaining);
+  const ordered = [...events.filter((event) => priorityKeys.has(eventKey(event))), ...events.filter((event) => !priorityKeys.has(eventKey(event)))];
+  return ordered.slice(0, Math.max(1, Number(limit) || 1000));
+}
+
 export function seedProcessRange(eventTime, windowSeconds = 900) {
   const center = parseSiemTime(eventTime)?.valueOf();
   if (!Number.isFinite(center)) throw new TypeError("Current event has no valid timestamp");

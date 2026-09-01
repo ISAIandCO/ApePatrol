@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree } from "../src/siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
 describe("process graph", () => {
   it("uses numeric Windows message IDs and a separate Linux execve branch", () => {
     expect(buildProcessSearchPredicate("host'o")).toBe("(event_src.host = 'host\\'o') and ((msgid in [1, 4688]) or (msgid = 'execve')) and (correlation_name = null)");
+  });
+  it("builds a focused query for the selected process, its parent and children", () => {
+    const where = buildProcessFocusPredicate(event({ "event_src.host": "arm1", "object.process.id": "8876", "object.process.parent.id": "4432" }));
+    expect(where).toContain("event_src.host = 'arm1'");
+    expect(where).toContain("object.process.id = 8876");
+    expect(where).toContain("object.process.parent.id = 8876");
+    expect(where).toContain("object.process.id = 4432");
   });
   it("normalizes epoch-second strings for graph ordering", () => {
     const graph = buildProcessGraph([event({ time: "1767225600", "object.process.guid": "A" })]);

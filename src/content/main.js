@@ -14,12 +14,13 @@ import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildRuleIntelligence } from "../siem/features/rule-intelligence.js";
-import { buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
 import {
   deduplicateProcessEvents,
   expansionRanges,
   fetchProcessPages,
   mergeLoadedRanges,
+  prioritizeProcessEvents,
   runProcessRangeQueries,
   seedProcessRange,
 } from "../siem/process/progressive.js";
@@ -205,19 +206,27 @@ async function buildProcessContext(client, event, settings) {
   const host = event["event_src.host"];
   if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
   const where = buildProcessSearchPredicate(host);
+  const focusWhere = buildProcessFocusPredicate(event);
   const range = seedProcessRange(event.time, settings.process.seedWindowSeconds);
   const select = await processFields(client);
-  const request = (requestScope) => fetchProcessPages(client, {
-    where, select, ...range, scope: requestScope,
-  }, { pageSize: settings.process.pageSize, maxEvents: settings.process.maxNodes });
-  let result;
-  try {
-    result = await request(processScope(settings));
-  } catch (error) {
-    if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
-    result = await request({});
-  }
-  const events = result.events;
+  const fetchQuery = async (queryWhere, maxEvents) => {
+    const request = (requestScope) => fetchProcessPages(client, {
+      where: queryWhere, select, ...range, scope: requestScope,
+    }, { pageSize: settings.process.pageSize, maxEvents });
+    try {
+      return await request(processScope(settings));
+    } catch (error) {
+      if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+      return request({});
+    }
+  };
+  const [result, focused] = await Promise.all([
+    fetchQuery(where, settings.process.maxNodes),
+    focusWhere === where
+      ? { events: [], pages: 0, limitReached: false }
+      : fetchQuery(focusWhere, Math.min(250, settings.process.maxNodes)).catch(() => ({ events: [], pages: 0, limitReached: false })),
+  ]);
+  const events = prioritizeProcessEvents(focused.events, result.events, settings.process.maxNodes);
   const graph = buildProcessGraph(events, { ...settings.process, sourceEvent: event });
   return {
     ok: true,
@@ -234,7 +243,8 @@ async function buildProcessContext(client, event, settings) {
       maxNodes: settings.process.maxNodes,
       pageSize: settings.process.pageSize,
       expansionStepSeconds: settings.process.expansionStepSeconds,
-      pages: result.pages,
+      pages: result.pages + focused.pages,
+      focusedEvents: focused.events.length,
       pendingRanges: result.limitReached ? [{ direction: "seed", ...range, offset: result.nextOffset }] : [],
       partial: true,
       limitReached: result.limitReached || graph.truncated,

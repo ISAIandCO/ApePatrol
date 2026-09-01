@@ -40,12 +40,14 @@ canvas.node-hover { cursor: pointer; }
 #legend i { width: 11px; height: 11px; border-radius: 50%; }
 #legend .source { background: #e67b00; box-shadow: 0 0 0 2px rgba(230, 123, 0, .24); }
 #legend .process { background: #665cc7; }
-#process-tooltip { position: fixed; z-index: 10; width: min(430px, calc(100vw - 28px)); max-height: min(560px, calc(100vh - 28px)); overflow: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid rgba(44, 36, 70, .2); border-radius: 9px; background: rgba(255, 255, 255, .96); box-shadow: 0 16px 50px rgba(30, 24, 50, .24); pointer-events: auto; }
+#process-tooltip { position: fixed; z-index: 10; width: min(430px, calc(100vw - 28px)); max-height: min(560px, calc(100vh - 28px)); overflow: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid rgba(44, 36, 70, .2); border-radius: 9px; background: rgba(255, 255, 255, .96); box-shadow: 0 16px 50px rgba(30, 24, 50, .24); pointer-events: none; }
+#process-tooltip.pinned { pointer-events: auto; }
 #process-tooltip h2 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
 #process-tooltip > p { margin: 3px 0 9px; color: rgba(36, 31, 50, .64); }
 .tooltip-row { display: grid; grid-template-columns: minmax(105px, .65fr) minmax(0, 1.35fr); gap: 9px; padding: 4px 0; border-top: 1px solid rgba(44, 36, 70, .08); }
 .tooltip-row span { color: rgba(36, 31, 50, .58); }
 .tooltip-row strong { font-weight: 500; overflow-wrap: anywhere; white-space: pre-wrap; }
+.tooltip-actions { position: sticky; bottom: -12px; display: flex; gap: 7px; margin: 9px -12px -12px; padding: 9px 12px; border-top: 1px solid rgba(44, 36, 70, .12); background: inherit; }
 [hidden] { display: none !important; }
 
 @media (prefers-color-scheme: dark) {
