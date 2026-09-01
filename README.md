@@ -10,11 +10,11 @@ ApePatrol — расширение-компаньон для расследов�
 
 ApePatrol — независимый open-source проект. Он не связан с Positive Technologies, не одобрен компанией и не является официальным компонентом MaxPatrol SIEM.
 
-## Возможности ApePatrol 3.4.9
+## Возможности ApePatrol 3.4.11
 
 - извлечение контекста открытого события;
 - copy/download JSON и shareable event link;
-- progressive process graph для Sysmon 1, Windows 4688 и Linux `execve`: небольшой seed-диапазон, paged expansion родителей/детей/siblings/соседних интервалов, cancel, dedup, явное расширение лимита, time slider, session-snapshot и переподключение к другой вкладке того же SIEM;
+- progressive process graph для Sysmon 1, Windows 4688 и Linux `execve`: ускоренная компонентно-иерархическая раскладка, свободный/временной/пошаговый режимы, выборочное расширение цепочки из карточки узла, paged expansion, regex и полнотекстовые локальные фильтры, cancel, dedup, явное расширение лимита, time slider, session-snapshot и переподключение к другой вкладке того же SIEM;
 - Related events для host, account, IP, process GUID, hash и executable;
 - field actions только при отсутствии штатного action menu;
 - отображение связанного `incident_id` без угадывания mutating API;

@@ -1,3 +1,5 @@
+import { processEventText } from "./filters.js";
+
 const first = (event, names) => names.map((name) => event?.[name]).find((value) => value !== undefined && value !== null && value !== "");
 
 export const PROCESS_DETAIL_FIELDS = Object.freeze([
@@ -65,6 +67,7 @@ export function buildProcessGraphView(graph, sourceNodeId = null, sourceEvent = 
       selected: node.id === sourceNodeId,
       label: processNodeLabel(displayEvent),
       searchText: details.map((item) => item.value).join(" ").toLowerCase(),
+      eventText: processEventText(displayEvent),
       details,
     };
   });

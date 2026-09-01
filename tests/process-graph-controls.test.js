@@ -29,4 +29,13 @@ describe("process graph controls", () => {
     expect(script).toContain("apepatrol.processGraph.forceSettings.v1");
     expect(script).toContain("startSimulation({ fitWhenDone: true })");
   });
+
+  it("offers step mode and selective expansion from a pinned node", async () => {
+    const html = await readFile(new URL("../src/static/process-graph.html", import.meta.url), "utf8");
+    const script = await readFile(new URL("../src/process-graph/process-graph.js", import.meta.url), "utf8");
+    expect(html).toContain('id="layout-step"');
+    expect(html).toContain('id="filter-event-text"');
+    expect(script).toContain('type: "siem:process:expand-node"');
+    expect(script).toContain('expandNodeGraph(node, direction)');
+  });
 });

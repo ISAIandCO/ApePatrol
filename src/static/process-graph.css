@@ -16,6 +16,7 @@ button:hover, button.active { border-color: #665cc7; color: #5549bd; }
 button.active { box-shadow: inset 0 0 0 1px #665cc7; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 input { min-width: 220px; flex: 1 1 260px; max-width: 420px; border: 1px solid rgba(44, 36, 70, .2); border-radius: 7px; padding: 7px 10px; background: rgba(255, 255, 255, .84); color: inherit; }
+input[aria-invalid="true"] { border-color: #c33131; box-shadow: inset 0 0 0 1px #c33131; }
 .filters { position: relative; z-index: 2; padding: 7px 14px 9px; border-bottom: 1px solid rgba(44, 36, 70, .14); background: rgba(255, 255, 255, .82); }
 .expansion { position: relative; z-index: 2; display: grid; gap: 7px; padding: 7px 14px; border-bottom: 1px solid rgba(44, 36, 70, .14); background: rgba(255, 255, 255, .86); }
 .expansion-actions, .range-controls { display: flex; flex-wrap: wrap; gap: 7px 10px; align-items: center; }
@@ -56,7 +57,7 @@ canvas.node-hover { cursor: pointer; }
 .tooltip-row { display: grid; grid-template-columns: minmax(105px, .65fr) minmax(0, 1.35fr); gap: 9px; padding: 4px 0; border-top: 1px solid rgba(44, 36, 70, .08); }
 .tooltip-row span { color: rgba(36, 31, 50, .58); }
 .tooltip-row strong { font-weight: 500; overflow-wrap: anywhere; white-space: pre-wrap; }
-.tooltip-actions { position: sticky; bottom: -12px; display: flex; gap: 7px; margin: 9px -12px -12px; padding: 9px 12px; border-top: 1px solid rgba(44, 36, 70, .12); background: inherit; }
+.tooltip-actions { position: sticky; bottom: -12px; display: flex; flex-wrap: wrap; gap: 7px; margin: 9px -12px -12px; padding: 9px 12px; border-top: 1px solid rgba(44, 36, 70, .12); background: inherit; }
 [hidden] { display: none !important; }
 
 @media (prefers-color-scheme: dark) {

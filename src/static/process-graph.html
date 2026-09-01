@@ -12,7 +12,8 @@
     <div class="toolbar" aria-label="Управление графом">
       <button id="layout-force" aria-pressed="true">Свободный граф</button>
       <button id="layout-timeline" aria-pressed="false">По времени</button>
-      <input id="process-search" type="search" placeholder="Найти процесс, PID, GUID…" aria-label="Поиск по процессам">
+      <button id="layout-step" aria-pressed="false">Пошаговый</button>
+      <input id="process-search" type="search" placeholder="Найти процесс, PID, GUID или /regex/i…" aria-label="Поиск по процессам">
       <button id="fit-graph">Вписать</button>
       <button id="reload-graph">Обновить данные</button>
       <button id="reconnect-graph" hidden>Подключить SIEM-вкладку</button>
@@ -27,13 +28,13 @@
       <button data-expand="siblings">Expand siblings</button>
       <button data-expand="previous">← Предыдущий интервал</button>
       <button data-expand="next">Следующий интервал →</button>
-      <label>Шаг <select id="expand-step"><option value="900" selected>15 минут</option><option value="3600">1 час</option><option value="21600">6 часов</option><option value="86400">24 часа</option></select></label>
+      <label id="expand-step-label">Шаг <select id="expand-step"><option value="900" selected>15 минут</option><option value="3600">1 час</option><option value="21600">6 часов</option><option value="86400">24 часа</option></select></label>
       <button id="cancel-expand" disabled>Отменить загрузку</button>
       <button id="continue-limit" hidden>Снять лимит до 10 000 узлов</button>
     </div>
     <div class="range-controls"><strong id="graph-range">Диапазон не загружен</strong><span id="partial-indicator">Частичный граф</span><label>Начало видимого диапазона <input id="time-slider-start" type="range" min="0" max="100" value="0"></label><label>Конец видимого диапазона <input id="time-slider-end" type="range" min="0" max="100" value="100"></label><span id="time-slider-label"></span></div>
   </section>
-  <details class="filters"><summary>Локальные фильтры графа</summary><div class="filter-grid"><label>Процесс<input id="filter-process-name" type="search"></label><label>Путь<input id="filter-process-path" type="search"></label><label>Учётная запись<input id="filter-account" type="search"></label><label>PID<input id="filter-pid" type="search"></label><label>Хост<input id="filter-host" type="search"></label><label>Источник / тип события<input id="filter-event-type" type="search"></label><label>С<input id="filter-time-from" type="datetime-local"></label><label>По<input id="filter-time-to" type="datetime-local"></label><label>Связи<select id="filter-relations"><option value="all">Все</option><option value="ancestors">Только предки выбранного</option><option value="descendants">Только потомки выбранного</option><option value="direct">Только прямые связи</option></select></label><label class="checkbox"><input id="filter-hide-isolated" type="checkbox"> Скрыть изолированные узлы</label><button id="filter-reset" type="button">Сбросить фильтры</button></div><p id="filter-count"></p></details>
+  <details class="filters"><summary>Локальные фильтры графа</summary><div class="filter-grid"><label>Строка в любом поле события<input id="filter-event-text" type="search" placeholder="текст или /regex/i"></label><label>Процесс<input id="filter-process-name" type="search" placeholder="текст или /regex/i"></label><label>Путь<input id="filter-process-path" type="search" placeholder="текст или /regex/i"></label><label>Учётная запись<input id="filter-account" type="search" placeholder="текст или /regex/i"></label><label>PID<input id="filter-pid" type="search" placeholder="текст или /regex/i"></label><label>Хост<input id="filter-host" type="search" placeholder="текст или /regex/i"></label><label>Источник / тип события<input id="filter-event-type" type="search" placeholder="текст или /regex/i"></label><label>С<input id="filter-time-from" type="datetime-local"></label><label>По<input id="filter-time-to" type="datetime-local"></label><label>Связи<select id="filter-relations"><option value="all">Все</option><option value="ancestors">Только предки выбранного</option><option value="descendants">Только потомки выбранного</option><option value="direct">Только прямые связи</option></select></label><label class="checkbox"><input id="filter-hide-isolated" type="checkbox"> Скрыть изолированные узлы</label><button id="filter-reset" type="button">Сбросить фильтры</button></div><p id="filter-count"></p></details>
   <main>
     <canvas id="process-canvas" aria-label="Интерактивный граф связей процессов"></canvas>
     <details class="force-panel" open>

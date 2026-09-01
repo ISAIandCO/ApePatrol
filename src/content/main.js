@@ -15,7 +15,7 @@ import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildRuleIntelligence } from "../siem/features/rule-intelligence.js";
-import { buildProcessFocusPredicate, buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId } from "../siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, selectProcessNeighborhood } from "../siem/process/graph.js";
 import {
   deduplicateProcessEvents,
   expansionRanges,
@@ -116,7 +116,7 @@ async function initialize() {
           return { ok: true, ...(await fetchAiRelatedEvents(client, event, settings, message.arguments)) };
         case "siem:process":
           if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
-          return await buildProcessContext(client, event, settings);
+          return await buildProcessContext(client, event, settings, message.mode);
         case "siem:process:expand": {
           if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
           const requestId = String(message.requestId ?? "");
@@ -125,6 +125,18 @@ async function initialize() {
           processQueries.set(requestId, abortController);
           try {
             return await expandProcessContext(client, event, settings, message, abortController.signal);
+          } finally {
+            processQueries.delete(requestId);
+          }
+        }
+        case "siem:process:expand-node": {
+          if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
+          const requestId = String(message.requestId ?? "");
+          if (!/^[a-f\d-]{8,64}$/i.test(requestId) || processQueries.has(requestId)) throw new TypeError("Invalid or duplicate process query ID");
+          const abortController = new AbortController();
+          processQueries.set(requestId, abortController);
+          try {
+            return await expandProcessNode(client, event, settings, message, abortController.signal);
           } finally {
             processQueries.delete(requestId);
           }
@@ -215,7 +227,8 @@ async function fetchAiRelatedEvents(client, event, settings, input = {}) {
   return { relation, range, label: action.label, where: action.where, events, truncated: events.length >= limit };
 }
 
-async function buildProcessContext(client, event, settings) {
+async function buildProcessContext(client, event, settings, mode = "broad") {
+  if (mode === "step") return buildStepProcessContext(client, event, settings);
   const host = event["event_src.host"];
   if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
   const where = buildProcessSearchPredicate(host);
@@ -261,6 +274,64 @@ async function buildProcessContext(client, event, settings) {
       pendingRanges: result.limitReached ? [{ direction: "seed", ...range, offset: result.nextOffset }] : [],
       partial: true,
       limitReached: result.limitReached || graph.truncated,
+      searchScope: settings.searchScope.mode,
+    },
+  };
+}
+
+async function fetchScopedProcessPages(client, settings, query, options) {
+  const request = (scope) => fetchProcessPages(client, { ...query, scope }, options);
+  try {
+    return await request(processScope(settings));
+  } catch (error) {
+    if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+    return request({});
+  }
+}
+
+async function buildStepProcessContext(client, event, settings) {
+  const host = event["event_src.host"];
+  if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
+  const range = seedProcessRange(event.time, 3600);
+  const select = await processFields(client);
+  const directWhere = buildProcessRelationPredicate(event, "both");
+  const direct = await fetchScopedProcessPages(client, settings, { where: directWhere, select, ...range }, {
+    pageSize: settings.process.pageSize,
+    maxEvents: Math.min(500, settings.process.maxNodes),
+  });
+  const directGraph = buildProcessGraph(direct.events, { ...settings.process, sourceEvent: event });
+  const directSourceNodeId = findSourceProcessNodeId(directGraph, event);
+  const directNeighborhood = selectProcessNeighborhood(directGraph, directSourceNodeId, 1);
+  const relationEvents = directNeighborhood.nodes.map((node) => node.event);
+  const secondWhere = buildProcessRelationPredicate(relationEvents.length ? relationEvents : [event], "both");
+  const second = await fetchScopedProcessPages(client, settings, { where: secondWhere, select, ...range }, {
+    pageSize: settings.process.pageSize,
+    maxEvents: settings.process.maxNodes,
+  });
+  const events = deduplicateProcessEvents(direct.events, second.events).slice(0, settings.process.maxNodes);
+  const completeGraph = buildProcessGraph(events, { ...settings.process, sourceEvent: event });
+  const sourceNodeId = findSourceProcessNodeId(completeGraph, event);
+  const graph = selectProcessNeighborhood(completeGraph, sourceNodeId, 2);
+  return {
+    ok: true,
+    graph,
+    origin: client.origin,
+    sourceEvent: event,
+    sourceUuid: event.uuid ?? null,
+    sourceNodeId,
+    queryMetadata: {
+      mode: "step",
+      where: secondWhere,
+      timeFrom: range.timeFrom,
+      timeTo: range.timeTo,
+      loadedRanges: [{ from: range.timeFrom, to: range.timeTo }],
+      maxNodes: settings.process.maxNodes,
+      pageSize: settings.process.pageSize,
+      expansionStepSeconds: 3600,
+      pages: direct.pages + second.pages,
+      pendingRanges: [],
+      partial: true,
+      limitReached: direct.limitReached || second.limitReached,
       searchScope: settings.searchScope.mode,
     },
   };
@@ -350,6 +421,50 @@ async function expandProcessContext(client, currentEvent, settings, message, sig
       partial: true,
       limitReached,
       lastDirection: message.direction,
+      searchScope: settings.searchScope.mode,
+    },
+  };
+}
+
+async function expandProcessNode(client, currentEvent, settings, message, signal) {
+  const sourceEvent = message.sourceEvent && typeof message.sourceEvent === "object" ? message.sourceEvent : currentEvent;
+  const nodeEvent = message.nodeEvent && typeof message.nodeEvent === "object" ? message.nodeEvent : null;
+  if (!nodeEvent?.["event_src.host"]) return { ok: false, kind: "feature-unavailable", error: "Node event has no event_src.host" };
+  const direction = ["parents", "children", "both"].includes(message.direction) ? message.direction : "both";
+  const existing = deduplicateProcessEvents(message.existingEvents);
+  const nodeLimit = Math.min(10_000, Math.max(settings.process.maxNodes, Number(message.nodeLimit) || settings.process.maxNodes));
+  const remaining = Math.max(0, nodeLimit - existing.length);
+  const range = seedProcessRange(nodeEvent.time, Number(message.stepSeconds) || 3600);
+  const where = buildProcessRelationPredicate(nodeEvent, direction);
+  const result = remaining ? await fetchScopedProcessPages(client, settings, {
+    where,
+    select: await processFields(client),
+    ...range,
+  }, { pageSize: settings.process.pageSize, maxEvents: remaining, signal }) : { events: [], pages: 0, limitReached: true };
+  const events = deduplicateProcessEvents(existing, result.events).slice(0, nodeLimit);
+  const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
+  const loadedRanges = mergeLoadedRanges(message.queryMetadata?.loadedRanges, [range]);
+  return {
+    ok: true,
+    graph,
+    origin: client.origin,
+    sourceEvent,
+    sourceUuid: sourceEvent.uuid ?? null,
+    sourceNodeId: findSourceProcessNodeId(graph, sourceEvent),
+    queryMetadata: {
+      ...message.queryMetadata,
+      mode: "step",
+      where,
+      timeFrom: loadedRanges[0]?.from ?? range.timeFrom,
+      timeTo: loadedRanges.at(-1)?.to ?? range.timeTo,
+      loadedRanges,
+      maxNodes: nodeLimit,
+      pageSize: settings.process.pageSize,
+      pages: Number(message.queryMetadata?.pages ?? 0) + result.pages,
+      pendingRanges: [],
+      partial: true,
+      limitReached: events.length >= nodeLimit || result.limitReached || graph.truncated,
+      lastDirection: direction,
       searchScope: settings.searchScope.mode,
     },
   };

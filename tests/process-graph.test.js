@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessFocusPredicate, buildProcessGraph, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree } from "../src/siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree, selectProcessNeighborhood } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
@@ -10,9 +10,14 @@ describe("process graph", () => {
   it("builds a focused query for the selected process, its parent and children", () => {
     const where = buildProcessFocusPredicate(event({ "event_src.host": "arm1", "object.process.id": "8876", "object.process.parent.id": "4432" }));
     expect(where).toContain("event_src.host = 'arm1'");
-    expect(where).toContain("object.process.id = 8876");
+    expect(where).toContain("object.process.id in [8876, 4432]");
     expect(where).toContain("object.process.parent.id = 8876");
-    expect(where).toContain("object.process.id = 4432");
+  });
+  it("builds directional predicates for selective node expansion", () => {
+    const source = event({ "object.process.id": "8876", "object.process.parent.id": "4432" });
+    expect(buildProcessRelationPredicate(source, "parents")).toContain("object.process.id in [8876, 4432]");
+    expect(buildProcessRelationPredicate(source, "parents")).not.toContain("object.process.parent.id = 8876");
+    expect(buildProcessRelationPredicate(source, "children")).toContain("object.process.parent.id = 8876");
   });
   it("normalizes epoch-second strings for graph ordering", () => {
     const graph = buildProcessGraph([event({ time: "1767225600", "object.process.guid": "A" })]);
@@ -114,5 +119,17 @@ describe("process graph", () => {
     const source = event({ uuid: "source-only", "object.process.guid": "SOURCE" });
     const graph = buildProcessGraph([], { sourceEvent: source });
     expect(findSourceProcessNodeId(graph, source)).toBe(graph.nodes[0].id);
+  });
+  it("keeps only the requested number of relationship hops in step mode", () => {
+    const chain = Array.from({ length: 5 }, (_, index) => event({
+      uuid: `node-${index}`,
+      time: new Date(Date.UTC(2026, 0, 1) + index * 1000).toISOString(),
+      "object.process.guid": `P${index}`,
+      ...(index ? { "object.process.parent.guid": `P${index - 1}` } : {}),
+    }));
+    const graph = buildProcessGraph(chain);
+    const sourceId = graph.nodes.find((node) => node.event.uuid === "node-2").id;
+    expect(selectProcessNeighborhood(graph, sourceId, 2).nodes.map((node) => node.event.uuid)).toEqual(["node-0", "node-1", "node-2", "node-3", "node-4"]);
+    expect(selectProcessNeighborhood(graph, sourceId, 1).nodes.map((node) => node.event.uuid)).toEqual(["node-1", "node-2", "node-3"]);
   });
 });

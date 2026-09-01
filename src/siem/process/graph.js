@@ -1,4 +1,4 @@
-import { andPredicates, buildEqualityPredicate, orPredicates } from "../../shared/pdql/builder.js";
+import { andPredicates, buildEqualityPredicate, buildInPredicate, orPredicates } from "../../shared/pdql/builder.js";
 import { parseSiemTime } from "../../shared/time.js";
 
 const first = (event, names) => names.map((name) => event?.[name]).find((value) => value !== undefined && value !== null && value !== "");
@@ -17,31 +17,43 @@ function processIdValue(field, value) {
   return field.endsWith(".id") && Number.isSafeInteger(numeric) && String(numeric) === String(value) ? numeric : value;
 }
 
-export function buildProcessFocusPredicate(event) {
-  const host = event?.["event_src.host"];
+export function buildProcessRelationPredicate(input, direction = "both") {
+  if (!["parents", "children", "both"].includes(direction)) throw new TypeError("Unknown process relation direction");
+  const events = (Array.isArray(input) ? input : [input]).filter((event) => event && typeof event === "object");
+  const host = events[0]?.["event_src.host"];
   if (!host) return "";
-  const predicates = new Set();
-  for (const [processField, parentField] of [
-    ["object.process.guid", "object.process.parent.guid"],
-    ["subject.process.guid", "subject.process.parent.guid"],
-    ["object.process.id", "object.process.parent.id"],
-    ["subject.process.id", "subject.process.parent.id"],
-    ["object.id", "object.process.parent.id"],
-  ]) {
-    const processValue = event[processField];
-    if (processValue !== undefined && processValue !== null && processValue !== "") {
-      const value = processIdValue(processField, processValue);
-      predicates.add(buildEqualityPredicate(processField, value));
-      predicates.add(buildEqualityPredicate(parentField, value));
-    }
-    if (processField === "object.id") continue;
-    const parentValue = event[parentField];
-    if (parentValue !== undefined && parentValue !== null && parentValue !== "") {
-      predicates.add(buildEqualityPredicate(processField, processIdValue(processField, parentValue)));
+  const valuesByField = new Map();
+  const add = (field, value) => {
+    if (value === undefined || value === null || value === "") return;
+    const values = valuesByField.get(field) ?? new Map();
+    const normalized = processIdValue(field, value);
+    values.set(`${typeof normalized}:${normalized}`, normalized);
+    valuesByField.set(field, values);
+  };
+  for (const event of events.filter((candidate) => String(candidate["event_src.host"] ?? "") === String(host))) {
+    for (const [processField, parentField] of [
+      ["object.process.guid", "object.process.parent.guid"],
+      ["subject.process.guid", "subject.process.parent.guid"],
+      ["object.process.id", "object.process.parent.id"],
+      ["subject.process.id", "subject.process.parent.id"],
+      ["object.id", "object.process.parent.id"],
+    ]) {
+      const processValue = event[processField];
+      add(processField, processValue);
+      if (["children", "both"].includes(direction)) add(parentField, processValue);
+      if (["parents", "both"].includes(direction) && processField !== "object.id") add(processField, event[parentField]);
     }
   }
+  const predicates = [...valuesByField].map(([field, values]) => {
+    const list = [...values.values()];
+    return list.length === 1 ? buildEqualityPredicate(field, list[0]) : buildInPredicate(field, list);
+  });
   const broad = buildProcessSearchPredicate(host);
-  return predicates.size ? andPredicates(broad, orPredicates([...predicates])) : broad;
+  return predicates.length ? andPredicates(broad, orPredicates(predicates)) : broad;
+}
+
+export function buildProcessFocusPredicate(event) {
+  return buildProcessRelationPredicate(event, "both");
 }
 
 function processIdentity(event) {
@@ -248,6 +260,48 @@ export function findSourceProcessNodeId(graph, sourceEvent) {
     if (match) return match.id;
   }
   return null;
+}
+
+export function selectProcessNeighborhood(graph, sourceNodeId, maxDistance = 2) {
+  if (!Array.isArray(graph?.nodes) || !sourceNodeId) return { nodes: [], roots: [], truncated: false };
+  const limit = Math.max(0, Math.min(64, Number(maxDistance) || 0));
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  if (!nodes.has(sourceNodeId)) return { nodes: [], roots: [], truncated: false };
+  const adjacent = new Map(graph.nodes.map((node) => [node.id, []]));
+  for (const node of graph.nodes) {
+    if (!node.parentId || !nodes.has(node.parentId)) continue;
+    adjacent.get(node.id).push(node.parentId);
+    adjacent.get(node.parentId).push(node.id);
+  }
+  const selected = new Set([sourceNodeId]);
+  const queue = [{ id: sourceNodeId, distance: 0 }];
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor];
+    if (current.distance >= limit) continue;
+    for (const id of adjacent.get(current.id) ?? []) {
+      if (selected.has(id)) continue;
+      selected.add(id);
+      queue.push({ id, distance: current.distance + 1 });
+    }
+  }
+  const resultNodes = graph.nodes.filter((node) => selected.has(node.id)).map((node) => ({
+    ...node,
+    parentId: selected.has(node.parentId) ? node.parentId : null,
+    children: [],
+    depth: 0,
+  }));
+  const resultMap = new Map(resultNodes.map((node) => [node.id, node]));
+  for (const node of resultNodes) if (node.parentId) resultMap.get(node.parentId)?.children.push(node.id);
+  const roots = resultNodes.filter((node) => !node.parentId).map((node) => node.id);
+  const depthQueue = roots.map((id) => ({ id, depth: 0 }));
+  for (let cursor = 0; cursor < depthQueue.length; cursor += 1) {
+    const current = depthQueue[cursor];
+    const node = resultMap.get(current.id);
+    if (!node) continue;
+    node.depth = current.depth;
+    for (const childId of node.children) depthQueue.push({ id: childId, depth: current.depth + 1 });
+  }
+  return { ...graph, nodes: resultNodes, roots, truncated: false };
 }
 
 export function orderProcessTree(graph) {
