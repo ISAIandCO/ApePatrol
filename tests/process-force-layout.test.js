@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRepulsion, forceIterationLimit, stabilizeForceNode } from "../src/process-graph/force-layout.js";
+import { applyRepulsion, DEFAULT_FORCE_SETTINGS, forceIterationLimit, normalizeForceSettings, stabilizeForceNode } from "../src/process-graph/force-layout.js";
 
 describe("large process force layout", () => {
   it("bounds repulsion work for a dense 10,000-node graph", () => {
@@ -17,5 +17,17 @@ describe("large process force layout", () => {
     expect(Math.abs(node.x)).toBeLessThanOrEqual(1_000);
     expect(Math.abs(node.y)).toBeLessThanOrEqual(1_000);
     expect(Math.hypot(node.vx, node.vy)).toBeLessThanOrEqual(40);
+  });
+
+  it("normalizes saved force controls and lets repulsion be disabled", () => {
+    expect(normalizeForceSettings({ attraction: -1, repulsion: 99, linkStrength: "bad", linkDistance: 250 })).toEqual({
+      attraction: 0,
+      repulsion: 30,
+      linkStrength: DEFAULT_FORCE_SETTINGS.linkStrength,
+      linkDistance: 250,
+    });
+    const nodes = [{ id: "a", x: 0, y: 0, vx: 0, vy: 0, radius: 10 }, { id: "b", x: 5, y: 0, vx: 0, vy: 0, radius: 10 }];
+    applyRepulsion(nodes, 1, 0);
+    expect(nodes.every((node) => node.vx === 0 && node.vy === 0)).toBe(true);
   });
 });

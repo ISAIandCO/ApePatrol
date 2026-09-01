@@ -36,6 +36,16 @@
   <details class="filters"><summary>Локальные фильтры графа</summary><div class="filter-grid"><label>Процесс<input id="filter-process-name" type="search"></label><label>Путь<input id="filter-process-path" type="search"></label><label>Учётная запись<input id="filter-account" type="search"></label><label>PID<input id="filter-pid" type="search"></label><label>Хост<input id="filter-host" type="search"></label><label>Источник / тип события<input id="filter-event-type" type="search"></label><label>С<input id="filter-time-from" type="datetime-local"></label><label>По<input id="filter-time-to" type="datetime-local"></label><label>Связи<select id="filter-relations"><option value="all">Все</option><option value="ancestors">Только предки выбранного</option><option value="descendants">Только потомки выбранного</option><option value="direct">Только прямые связи</option></select></label><label class="checkbox"><input id="filter-hide-isolated" type="checkbox"> Скрыть изолированные узлы</label><button id="filter-reset" type="button">Сбросить фильтры</button></div><p id="filter-count"></p></details>
   <main>
     <canvas id="process-canvas" aria-label="Интерактивный граф связей процессов"></canvas>
+    <details class="force-panel" open>
+      <summary>Силы графа</summary>
+      <fieldset id="force-controls">
+        <label><span>Сила притяжения <output id="force-attraction-value">0.40</output></span><input id="force-attraction" type="range" min="0" max="1" step="0.05" value="0.4"></label>
+        <label><span>Сила отталкивания <output id="force-repulsion-value">16.00</output></span><input id="force-repulsion" type="range" min="0" max="30" step="0.25" value="16"></label>
+        <label><span>Сила связи <output id="force-link-strength-value">1.00</output></span><input id="force-link-strength" type="range" min="0" max="2" step="0.05" value="1"></label>
+        <label><span>Расстояние между узлами <output id="force-link-distance-value">88</output></span><input id="force-link-distance" type="range" min="40" max="500" step="1" value="88"></label>
+        <button id="force-reset" type="button">Сбросить</button>
+      </fieldset>
+    </details>
     <div id="loading" class="message">Получаю события и строю связи…</div>
     <div id="empty" class="message" hidden>Нет данных для построения графа.</div>
     <aside id="legend" aria-label="Легенда">
