@@ -2,7 +2,7 @@
 
 ## Обычная установка
 
-1. Откройте GitHub Releases репозитория.
+1. Откройте [GitHub Releases ApePatrol](https://github.com/ISAIandCO/ApePatrol/releases/latest).
 2. Скачайте **подписанный** `apepatrol-<version>-firefox.xpi`.
 3. Откройте XPI в Firefox 140+ и подтвердите установку.
 4. Откройте настройки ApePatrol.
