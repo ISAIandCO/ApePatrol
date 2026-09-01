@@ -234,6 +234,10 @@ export class SiemDomAdapter {
     return header?.textContent?.trim().replace(",", "") || null;
   }
   getEventUuid() { return this.getEventField("uuid"); }
+  getEventActionsHost() {
+    const card = this.getEventCard();
+    return card?.querySelector?.(":scope > header") ?? card;
+  }
   getFilterEditor() {
     const editors = queryAllDeep(FILTER_EDITOR_SELECTOR, this.getRoot());
     return editors.find((editor) => editor.matches(":focus")) ?? editors[0] ?? null;

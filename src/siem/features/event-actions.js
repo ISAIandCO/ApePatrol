@@ -95,15 +95,16 @@ export class EventFieldActions {
 
   mountEventToolbar(event, adapter) {
     const card = adapter.getEventCard();
+    const host = adapter.getEventActionsHost?.() ?? card;
     const eventJson = JSON.stringify(event, null, 2);
     const fingerprint = eventJson;
-    if (!card || !Object.keys(event).length) {
+    if (!host || !Object.keys(event).length) {
       this.eventToolbar?.remove();
       this.eventToolbar = null;
       this.eventFingerprint = null;
       return;
     }
-    if (this.eventToolbar?.parentNode === card && this.eventFingerprint === fingerprint) return;
+    if (this.eventToolbar?.parentNode === host && this.eventFingerprint === fingerprint) return;
     this.eventToolbar?.remove();
 
     const toolbar = document.createElement("div");
@@ -160,7 +161,8 @@ export class EventFieldActions {
       return "Загрузка начата";
     });
     toolbar.append(status);
-    card.prepend(toolbar);
+    if (host === card) card.prepend(toolbar);
+    else host.append(toolbar);
     this.eventToolbar = toolbar;
     this.eventFingerprint = fingerprint;
     this.elements.add(toolbar);
