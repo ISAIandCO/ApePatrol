@@ -304,6 +304,17 @@ export function selectProcessNeighborhood(graph, sourceNodeId, maxDistance = 2) 
   return { ...graph, nodes: resultNodes, roots, truncated: false };
 }
 
+export function selectDirectProcessRelatives(graph, sourceNodeId, direction = "both") {
+  if (!Array.isArray(graph?.nodes) || !sourceNodeId) return [];
+  if (!["parents", "children", "both"].includes(direction)) throw new TypeError("Unknown process relation direction");
+  const source = graph.nodes.find((node) => node.id === sourceNodeId);
+  if (!source) return [];
+  return graph.nodes.filter((node) => {
+    if (["parents", "both"].includes(direction) && node.id === source.parentId) return true;
+    return ["children", "both"].includes(direction) && node.parentId === source.id;
+  });
+}
+
 export function orderProcessTree(graph) {
   if (!Array.isArray(graph?.nodes)) return [];
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));

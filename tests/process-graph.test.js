@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree, selectProcessNeighborhood } from "../src/siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, orderProcessTree, selectDirectProcessRelatives, selectProcessNeighborhood } from "../src/siem/process/graph.js";
 
 const event = (overrides = {}) => ({ uuid: crypto.randomUUID(), time: "2026-01-01T00:00:00Z", msgid: "1", "event_src.host": "host", "object.process.id": "10", ...overrides });
 
@@ -131,5 +131,16 @@ describe("process graph", () => {
     const sourceId = graph.nodes.find((node) => node.event.uuid === "node-2").id;
     expect(selectProcessNeighborhood(graph, sourceId, 2).nodes.map((node) => node.event.uuid)).toEqual(["node-0", "node-1", "node-2", "node-3", "node-4"]);
     expect(selectProcessNeighborhood(graph, sourceId, 1).nodes.map((node) => node.event.uuid)).toEqual(["node-1", "node-2", "node-3"]);
+  });
+  it("keeps only confirmed direct relatives from a node expansion", () => {
+    const parent = event({ uuid: "parent", "object.process.guid": "P" });
+    const source = event({ uuid: "source", time: "2026-01-01T00:00:01Z", "object.process.guid": "S", "object.process.parent.guid": "P" });
+    const child = event({ uuid: "child", time: "2026-01-01T00:00:02Z", "object.process.guid": "C", "object.process.parent.guid": "S" });
+    const unrelated = event({ uuid: "unrelated", time: "2026-01-01T00:00:03Z", "object.process.guid": "X" });
+    const graph = buildProcessGraph([parent, source, child, unrelated]);
+    const sourceId = graph.nodes.find((node) => node.event.uuid === "source").id;
+    expect(selectDirectProcessRelatives(graph, sourceId, "parents").map((node) => node.event.uuid)).toEqual(["parent"]);
+    expect(selectDirectProcessRelatives(graph, sourceId, "children").map((node) => node.event.uuid)).toEqual(["child"]);
+    expect(selectDirectProcessRelatives(graph, sourceId, "both").map((node) => node.event.uuid).sort()).toEqual(["child", "parent"]);
   });
 });

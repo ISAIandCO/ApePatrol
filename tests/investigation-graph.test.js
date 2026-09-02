@@ -40,7 +40,22 @@ describe("investigation relationship graph", () => {
 
   it("creates a readable event description from common fields", () => {
     expect(describeInvestigationEvent({ msgid: "4688", "event_src.host": "PC-1", "object.process.name": "cmd.exe" })).toEqual({
-      title: "Событие 4688", description: "ID 4688 · хост PC-1 · cmd.exe",
+      title: "Запущен процесс «cmd.exe»", description: "Хост: PC-1 · ID события: 4688",
+    });
+  });
+
+  it("describes logons before falling back to rule names", () => {
+    expect(describeInvestigationEvent({ msgid: "4624", "object.account.name": "analyst", correlation_name: "Interactive logon" })).toEqual({
+      title: "Пользователь «analyst» вошёл в систему",
+      description: "Правило корреляции: Interactive logon · ID события: 4624",
+    });
+  });
+
+  it("distinguishes correlation and normalization rule fallbacks", () => {
+    expect(describeInvestigationEvent({ correlation_name: "Suspicious activity" }).title).toBe("Сработало правило корреляции «Suspicious activity»");
+    expect(describeInvestigationEvent({ normalization_rule_name: "Linux audit" }).title).toBe("Событие нормализовано правилом «Linux audit»");
+    expect(describeInvestigationEvent({ "event_src.title": "unix_like", action: "start" })).toEqual({
+      title: "Событие SIEM", description: "Источник события: unix_like · Действие: start",
     });
   });
 });
