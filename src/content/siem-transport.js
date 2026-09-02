@@ -19,3 +19,28 @@ export function createSiemBackgroundFetch(runtime = browser.runtime) {
     });
   };
 }
+
+export function createWorkspaceSiemFetch({ workspaceId, origin, runtime = browser.runtime }) {
+  return async (url, options = {}) => {
+    const target = new URL(url);
+    if (target.origin !== new URL(origin).origin) throw new Error("Workspace SIEM request changed origin");
+    const response = await runtime.sendMessage({
+      type: "workspace:siem-api",
+      workspaceId,
+      origin,
+      path: `${target.pathname}${target.search}`,
+      method: options.method ?? "GET",
+      body: options.body,
+    });
+    if (!response?.ok) {
+      const error = new Error(response?.error ?? "Workspace SIEM request failed");
+      error.code = response?.errorCode;
+      throw error;
+    }
+    return new Response(response.response.status === 204 ? null : response.response.bodyText, {
+      status: response.response.status,
+      statusText: response.response.statusText,
+      headers: { "Content-Type": response.response.contentType },
+    });
+  };
+}

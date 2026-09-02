@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSiemBackgroundFetch } from "../src/content/siem-transport.js";
+import { createSiemBackgroundFetch, createWorkspaceSiemFetch } from "../src/content/siem-transport.js";
 
 describe("content-to-background SIEM transport", () => {
   it("forwards only the relative API path and reconstructs the response", async () => {
@@ -35,5 +35,15 @@ describe("content-to-background SIEM transport", () => {
     };
     const response = await createSiemBackgroundFetch(runtime)("https://siem.example/api/events/v2/events_metadata", { signal: controller.signal });
     expect(response.status).toBe(204);
+  });
+
+  it("routes workspace reads through its bound SIEM origin", async () => {
+    const runtime = { sendMessage: vi.fn().mockResolvedValue({ ok: true, response: { status: 200, statusText: "OK", contentType: "application/json", bodyText: "[]" } }) };
+    const fetchImpl = createWorkspaceSiemFetch({ workspaceId: "case-1", origin: "https://siem.example", runtime });
+    await fetchImpl("https://siem.example/api/events/v2/events_metadata");
+    expect(runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "workspace:siem-api", workspaceId: "case-1", origin: "https://siem.example", path: "/api/events/v2/events_metadata",
+    }));
+    await expect(fetchImpl("https://other.example/api/events/v2/events_metadata")).rejects.toThrow("changed origin");
   });
 });

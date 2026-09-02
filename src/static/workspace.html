@@ -15,7 +15,18 @@
       <div class="editor-heading"><div><input id="workspace-title" aria-label="Название расследования"><p id="workspace-origin"></p></div><div class="actions"><button id="workspace-save">Сохранить</button><button id="export-json">Export JSON</button><button id="export-markdown">Export Markdown</button><button id="workspace-delete" class="danger">Удалить расследование</button></div></div>
       <label>Теги через запятую <input id="workspace-tags"></label>
       <label>Заметки аналитика <textarea id="workspace-notes" rows="8"></textarea></label>
-      <h2>Прикреплённые объекты</h2><div id="workspace-items"></div>
+      <section id="investigation-graph-panel">
+        <div class="section-heading"><div><h2>Граф расследования</h2><p>События связаны через общие хосты, учётные записи, IP, процессы и другие опорные сущности.</p></div><div class="actions"><label class="inline-choice"><input id="graph-shared-only" type="checkbox"> Только общие сущности</label><button id="graph-fit">Вписать</button></div></div>
+        <div id="investigation-graph-shell"><canvas id="investigation-graph-canvas" aria-label="Граф взаимосвязей расследования"></canvas><div id="investigation-graph-tooltip" hidden></div></div>
+        <p id="investigation-graph-summary"></p>
+        <div id="related-search">
+          <h3>Найти связанные события</h3><p>Нажмите на один или несколько узлов-сущностей на графе. Роли subject/object/src/dst объединяются в один фильтр.</p>
+          <div id="graph-selected-entities" class="entity-chips"></div>
+          <div class="actions related-search-controls"><label>Условие<select id="graph-search-mode"><option value="all">Совпадают все (AND)</option><option value="any">Совпадает любое (OR)</option></select></label><label>Запас по времени<select id="graph-search-range"><option value="900">±15 минут</option><option value="3600" selected>±1 час</option><option value="86400">±24 часа</option><option value="604800">±7 дней</option></select></label><button id="graph-search">Искать в SIEM</button><button id="graph-clear-selection">Очистить выбор</button></div>
+          <p id="graph-search-status"></p><div id="graph-search-results"></div>
+        </div>
+      </section>
+      <div class="section-heading"><h2>Прикреплённые объекты</h2><label>Порядок<select id="workspace-item-sort"><option value="time-asc">События: сначала ранние</option><option value="time-desc">События: сначала поздние</option><option value="added">По добавлению</option></select></label></div><div id="workspace-items"></div>
       <section id="compare-panel" hidden><h2>Event Compare</h2><p id="compare-summary"></p><div class="actions"><button id="copy-compare-json">Copy diff as JSON</button><button id="copy-compare-markdown">Copy diff as Markdown</button></div><div class="table-scroll"><table><thead><tr><th>Group</th><th>Field</th><th>Status</th><th>Event 1</th><th>Event 2</th><th id="compare-event-3">Event 3</th></tr></thead><tbody id="compare-body"></tbody></table></div></section>
       <section id="workspace-ai">
         <h2>SEC AI Assistant</h2><p>Постоянный диалог этого расследования. Перед каждой внешней отправкой ApePatrol показывает точный payload.</p>
