@@ -15,7 +15,7 @@ import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildRuleIntelligence } from "../siem/features/rule-intelligence.js";
-import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, selectProcessNeighborhood } from "../siem/process/graph.js";
+import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, selectDirectProcessRelatives, selectProcessNeighborhood } from "../siem/process/graph.js";
 import {
   deduplicateProcessEvents,
   expansionRanges,
@@ -441,7 +441,11 @@ async function expandProcessNode(client, currentEvent, settings, message, signal
     select: await processFields(client),
     ...range,
   }, { pageSize: settings.process.pageSize, maxEvents: remaining, signal }) : { events: [], pages: 0, limitReached: true };
-  const events = deduplicateProcessEvents(existing, result.events).slice(0, nodeLimit);
+  const candidateEvents = deduplicateProcessEvents(existing, result.events).slice(0, nodeLimit);
+  const candidateGraph = buildProcessGraph(candidateEvents, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
+  const nodeId = findSourceProcessNodeId(candidateGraph, nodeEvent);
+  const relatedEvents = selectDirectProcessRelatives(candidateGraph, nodeId, direction).map((node) => node.event);
+  const events = deduplicateProcessEvents(existing, relatedEvents).slice(0, nodeLimit);
   const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
   const loadedRanges = mergeLoadedRanges(message.queryMetadata?.loadedRanges, [range]);
   return {

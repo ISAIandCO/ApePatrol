@@ -20,6 +20,12 @@ const state = {
 };
 let aiSaveTimer;
 let investigationCanvas;
+const investigationForceControls = Object.freeze({
+  attraction: { input: "workspace-force-attraction", output: "workspace-force-attraction-value", digits: 2 },
+  repulsion: { input: "workspace-force-repulsion", output: "workspace-force-repulsion-value", digits: 2 },
+  linkStrength: { input: "workspace-force-link-strength", output: "workspace-force-link-strength-value", digits: 2 },
+  linkDistance: { input: "workspace-force-link-distance", output: "workspace-force-link-distance-value", digits: 0 },
+});
 
 function setStatus(message, error = false) {
   byId("workspace-status").textContent = message;
@@ -34,6 +40,13 @@ async function request(message) {
 
 function selectedWorkspace() { return state.workspaces.find((workspace) => workspace.id === state.selectedId) ?? null; }
 function formatEventTime(value) { return parseSiemTime(value)?.toLocaleString("ru-RU") ?? "Время не указано"; }
+
+function renderInvestigationForceControls() {
+  for (const [name, control] of Object.entries(investigationForceControls)) {
+    byId(control.input).value = investigationCanvas.forceSettings[name];
+    byId(control.output).textContent = investigationCanvas.forceSettings[name].toFixed(control.digits);
+  }
+}
 
 function filteredWorkspaces() {
   const search = byId("workspace-search").value.trim().toLowerCase();
@@ -472,6 +485,14 @@ byId("graph-shared-only").addEventListener("change", () => selectedWorkspace() &
 byId("graph-fit").addEventListener("click", () => investigationCanvas.fit());
 byId("graph-clear-selection").addEventListener("click", () => investigationCanvas.clearSelection());
 byId("graph-search").addEventListener("click", () => searchRelatedEvents().catch((error) => { byId("graph-search-status").textContent = error.message; setStatus(error.message, true); renderGraphSelection(); }));
+for (const [name, control] of Object.entries(investigationForceControls)) {
+  byId(control.input).addEventListener("input", (event) => {
+    investigationCanvas.updateForceSetting(name, event.target.value);
+    renderInvestigationForceControls();
+  });
+  byId(control.input).addEventListener("change", () => investigationCanvas.persistForceSettings());
+}
+byId("workspace-force-reset").addEventListener("click", () => { investigationCanvas.resetForceSettings(); renderInvestigationForceControls(); });
 byId("export-json").addEventListener("click", () => download(workspaceToJson(selectedWorkspace()), "json", "application/json").catch((error) => setStatus(error.message, true)));
 byId("export-markdown").addEventListener("click", () => download(workspaceToMarkdown(selectedWorkspace()), "md", "text/markdown").catch((error) => setStatus(error.message, true)));
 byId("copy-compare-json").addEventListener("click", () => navigator.clipboard.writeText(JSON.stringify(state.compare, null, 2)).catch((error) => setStatus(error.message, true)));
@@ -505,6 +526,7 @@ async function initialize() {
       if (url) browser.runtime.sendMessage({ type: "tabs:open", url });
     },
   });
+  renderInvestigationForceControls();
   const settingsResponse = await request({ type: "settings:get" });
   state.settings = settingsResponse.settings;
   const requestedId = new URLSearchParams(location.search).get("id");

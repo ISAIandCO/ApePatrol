@@ -1,7 +1,15 @@
+import { applyRepulsion, DEFAULT_FORCE_SETTINGS, forceIterationLimit, normalizeForceSettings, stabilizeForceNode } from "../process-graph/force-layout.js";
+
 const COLORS = Object.freeze({
   event: "#665cc7", host: "#2f7d68", account: "#b06b24", ip: "#2d74ad", process: "#9a4f8c",
   file: "#66717d", hash: "#a43f4c", domain: "#397d9b", session: "#7c61a8", incident: "#bd4a45",
 });
+const FORCE_STORAGE_KEY = "apepatrol.processGraph.forceSettings.v1";
+
+function loadForceSettings() {
+  try { return normalizeForceSettings(JSON.parse(localStorage.getItem(FORCE_STORAGE_KEY) ?? "{}")); }
+  catch { return { ...DEFAULT_FORCE_SETTINGS }; }
+}
 
 function roundedRectangle(context, x, y, width, height, radius) {
   context.beginPath();
@@ -24,6 +32,12 @@ export class InvestigationCanvas {
     this.offsetY = 0;
     this.pan = null;
     this.pixelRatio = 1;
+    this.forceSettings = loadForceSettings();
+    this.alpha = 0;
+    this.frame = null;
+    this.iterations = 0;
+    this.boundary = 1_000;
+    this.fitWhenDone = false;
     this.bind();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -41,7 +55,16 @@ export class InvestigationCanvas {
       const point = this.point(event);
       if (this.pan) {
         if (Math.hypot(point.x - this.pan.x, point.y - this.pan.y) > 5) this.pan.moved = true;
-        if (this.pan.moved && !this.pan.node) {
+        if (this.pan.moved && this.pan.node) {
+          this.pan.node.x = (point.x - this.offsetX) / this.scale;
+          this.pan.node.y = (point.y - this.offsetY) / this.scale;
+          this.pan.node.anchorX = this.pan.node.x;
+          this.pan.node.anchorY = this.pan.node.y;
+          this.pan.node.vx = 0;
+          this.pan.node.vy = 0;
+          this.alpha = Math.max(this.alpha, .25);
+          this.draw();
+        } else if (this.pan.moved) {
           this.offsetX = this.pan.offsetX + point.x - this.pan.x;
           this.offsetY = this.pan.offsetY + point.y - this.pan.y;
           this.draw();
@@ -55,7 +78,8 @@ export class InvestigationCanvas {
       const interaction = this.pan;
       this.pan = null;
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
-      if (!interaction?.node || interaction.moved) return;
+      if (interaction?.node && interaction.moved) { this.startSimulation(); return; }
+      if (!interaction?.node) return;
       if (interaction.node.kind === "entity" && interaction.node.queryFields?.length) {
         if (this.selectedIds.has(interaction.node.id)) this.selectedIds.delete(interaction.node.id);
         else this.selectedIds.add(interaction.node.id);
@@ -63,6 +87,7 @@ export class InvestigationCanvas {
         this.onSelectionChange?.(this.selectedNodes());
       } else if (interaction.node.kind === "event") this.onEventOpen?.(interaction.node);
     });
+    this.canvas.addEventListener("pointercancel", () => { this.pan = null; this.startSimulation(); });
     this.canvas.addEventListener("pointerleave", () => { if (!this.pan) this.showTooltip(null); });
     this.canvas.addEventListener("wheel", (event) => {
       event.preventDefault();
@@ -99,13 +124,40 @@ export class InvestigationCanvas {
     this.onSelectionChange?.([]);
   }
 
+  updateForceSetting(name, value) {
+    this.forceSettings = normalizeForceSettings({ ...this.forceSettings, [name]: value });
+    this.startSimulation();
+    return this.forceSettings;
+  }
+
+  persistForceSettings() {
+    try { localStorage.setItem(FORCE_STORAGE_KEY, JSON.stringify(this.forceSettings)); }
+    catch { /* optional preference */ }
+  }
+
+  resetForceSettings() {
+    this.forceSettings = { ...DEFAULT_FORCE_SETTINGS };
+    this.persistForceSettings();
+    this.layout();
+    this.startSimulation({ fitWhenDone: true });
+    return this.forceSettings;
+  }
+
   setGraph(graph) {
+    const previous = this.nodeMap;
     this.nodes = (graph?.nodes ?? []).map((node) => ({ ...node, radius: node.kind === "event" ? 16 : Math.min(18, 8 + Math.sqrt(node.connectionCount || 0) * 2) }));
     this.edges = graph?.edges ?? [];
+    this.layout();
+    for (const node of this.nodes) {
+      const saved = previous.get(node.id);
+      if (!saved || ![saved.x, saved.y].every(Number.isFinite)) continue;
+      node.x = saved.x; node.y = saved.y; node.vx = 0; node.vy = 0;
+      node.anchorX = Number.isFinite(saved.anchorX) ? saved.anchorX : saved.x;
+      node.anchorY = Number.isFinite(saved.anchorY) ? saved.anchorY : saved.y;
+    }
     this.nodeMap = new Map(this.nodes.map((node) => [node.id, node]));
     this.selectedIds = new Set([...this.selectedIds].filter((id) => this.nodeMap.has(id)));
-    this.layout();
-    this.fit();
+    this.startSimulation({ fitWhenDone: true });
   }
 
   layout() {
@@ -127,6 +179,51 @@ export class InvestigationCanvas {
     const height = Math.max(events.length, entities.length, 1) * gap;
     events.forEach((node, index) => { node.x = 250; node.y = index * gap - height / 2; });
     entities.forEach((node, index) => { node.x = -250; node.y = index * gap - height / 2; });
+    for (const node of this.nodes) {
+      node.vx = 0; node.vy = 0; node.anchorX = node.x; node.anchorY = node.y;
+    }
+    this.boundary = Math.max(1_000, height + 500);
+  }
+
+  startSimulation({ fitWhenDone = false } = {}) {
+    if (!this.nodes.length) { this.alpha = 0; this.fitWhenDone = false; this.fit(); return; }
+    this.alpha = 1;
+    this.iterations = 0;
+    this.fitWhenDone ||= fitWhenDone;
+    this.scheduleSimulation();
+  }
+
+  scheduleSimulation() {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null;
+      const deadline = performance.now() + 10;
+      const batch = this.nodes.length < 600 ? 8 : this.nodes.length < 2_500 ? 4 : 2;
+      for (let step = 0; step < batch && this.alpha > .012 && performance.now() < deadline; step += 1) this.simulationStep();
+      this.draw();
+      if (this.alpha > .012) this.scheduleSimulation();
+      else if (this.fitWhenDone) { this.fitWhenDone = false; this.fit(); }
+    });
+  }
+
+  simulationStep() {
+    for (const edge of this.edges) {
+      const source = this.nodeMap.get(edge.sourceId);
+      const target = this.nodeMap.get(edge.targetId);
+      if (!source || !target) continue;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const desired = this.forceSettings.linkDistance + source.radius + target.radius;
+      const force = ((distance - desired) / distance) * .035 * this.forceSettings.linkStrength * this.alpha;
+      source.vx += dx * force; source.vy += dy * force;
+      target.vx -= dx * force; target.vy -= dy * force;
+    }
+    applyRepulsion(this.nodes, this.alpha, this.forceSettings.repulsion);
+    for (const node of this.nodes) stabilizeForceNode(node, this.alpha, this.boundary, this.pan?.node === node, this.forceSettings.attraction);
+    this.alpha *= .982;
+    this.iterations += 1;
+    if (this.iterations >= forceIterationLimit(this.nodes.length)) this.alpha = 0;
   }
 
   fit() {

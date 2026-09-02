@@ -16,8 +16,11 @@ const ENTITY_SPECS = Object.freeze([
 ]);
 
 export const INVESTIGATION_EVENT_FIELDS = Object.freeze([
-  "uuid", "time", "msgid", "correlation_name", "correlation_type", "event_src.title", "event_src.category",
+  "uuid", "time", "msgid", "correlation_name", "correlation_type",
+  "normalization_rule_name", "normalization.name", "normalizer.name", "normalization_rule",
+  "event_src.title", "event_src.category",
   "description", "event_description", "reason", "action",
+  "object.process.cmdline", "subject.process.cmdline", "src.port", "dst.port",
   ...new Set(ENTITY_SPECS.flatMap((spec) => spec.fields)),
 ]);
 
@@ -64,16 +67,53 @@ function firstValue(event, fields) {
 }
 
 export function describeInvestigationEvent(event = {}) {
-  const title = firstValue(event, ["correlation_name", "event_src.title", "event_name", "name"])
-    ?? (event.msgid ? `Событие ${event.msgid}` : "Событие SIEM");
-  const description = firstValue(event, ["description", "event_description", "reason", "action"]);
+  const msgid = firstValue(event, ["msgid"]);
+  const action = firstValue(event, ["action"]);
+  const normalizedAction = action?.toLocaleLowerCase();
+  const host = firstValue(event, ["event_src.host", "src.host", "dst.host"]);
+  const account = firstValue(event, ["object.account.name", "dst.account.name", "subject.account.name", "src.account.name"]);
+  const process = firstValue(event, ["object.process.name", "object.process.path", "subject.process.name", "subject.process.path"]);
+  const commandLine = firstValue(event, ["object.process.cmdline", "subject.process.cmdline"]);
+  const sourceIp = firstValue(event, ["src.ip"]);
+  const destinationIp = firstValue(event, ["dst.ip"]);
+  const file = firstValue(event, ["object.file.path", "subject.file.path", "file.path", "object.path"]);
+  const correlationRule = firstValue(event, ["correlation_name"]);
+  const normalizationRule = firstValue(event, ["normalization_rule_name", "normalization.name", "normalizer.name", "normalization_rule"]);
+  const sourceTitle = firstValue(event, ["event_src.title"]);
+  const originalDescription = firstValue(event, ["description", "event_description", "reason"]);
+  const processStarted = process && (["1", "4688", "execve"].includes(String(msgid).toLocaleLowerCase())
+    || ["start", "started", "create", "created", "execute", "executed", "run"].includes(normalizedAction));
+  const processStopped = process && (["2", "4689"].includes(String(msgid).toLocaleLowerCase())
+    || ["stop", "stopped", "terminate", "terminated", "exit", "exited"].includes(normalizedAction));
+  let title;
+  if (processStarted) title = `Запущен процесс «${process}»`;
+  else if (processStopped) title = `Завершён процесс «${process}»`;
+  else if (String(msgid) === "4624") title = account ? `Пользователь «${account}» вошёл в систему` : "Выполнен вход в систему";
+  else if (String(msgid) === "4625") title = account ? `Неудачный вход пользователя «${account}»` : "Неудачная попытка входа";
+  else if (["4634", "4647"].includes(String(msgid))) title = account ? `Пользователь «${account}» вышел из системы` : "Выполнен выход из системы";
+  else if (sourceIp && destinationIp) title = `Сетевое соединение ${sourceIp} → ${destinationIp}`;
+  else if (file && ["create", "created", "write", "written"].includes(normalizedAction)) title = `Создан файл «${file}»`;
+  else if (file && ["delete", "deleted", "remove", "removed"].includes(normalizedAction)) title = `Удалён файл «${file}»`;
+  else if (file && ["modify", "modified", "change", "changed", "rename", "renamed"].includes(normalizedAction)) title = `Изменён файл «${file}»`;
+  else if (correlationRule) title = `Сработало правило корреляции «${correlationRule}»`;
+  else if (normalizationRule) title = `Событие нормализовано правилом «${normalizationRule}»`;
+  else if (msgid) title = `Событие ${msgid}`;
+  else title = firstValue(event, ["event_name", "name"]) ?? "Событие SIEM";
   const details = [
-    event.msgid ? `ID ${event.msgid}` : null,
-    firstValue(event, ["event_src.host"]) ? `хост ${firstValue(event, ["event_src.host"])}` : null,
-    firstValue(event, ["subject.account.name", "object.account.name"]) ? `учётная запись ${firstValue(event, ["subject.account.name", "object.account.name"])}` : null,
-    firstValue(event, ["object.process.path", "subject.process.path", "object.process.name", "subject.process.name"]),
+    host ? `Хост: ${host}` : null,
+    account && !title.includes(account) ? `Учётная запись: ${account}` : null,
+    process && !title.includes(process) ? `Процесс: ${process}` : null,
+    commandLine && commandLine !== process ? `Командная строка: ${commandLine}` : null,
+    sourceIp && !title.includes(sourceIp) ? `Источник: ${sourceIp}` : null,
+    destinationIp && !title.includes(destinationIp) ? `Назначение: ${destinationIp}` : null,
+    correlationRule && !title.includes(correlationRule) ? `Правило корреляции: ${correlationRule}` : null,
+    normalizationRule && !title.includes(normalizationRule) ? `Правило нормализации: ${normalizationRule}` : null,
+    sourceTitle && sourceTitle !== normalizationRule ? `Источник события: ${sourceTitle}` : null,
+    originalDescription,
+    action && !title.toLocaleLowerCase().includes(normalizedAction) ? `Действие: ${action}` : null,
+    msgid && !title.includes(String(msgid)) ? `ID события: ${msgid}` : null,
   ].filter(Boolean);
-  return { title: String(title), description: description ? String(description) : details.join(" · ") || "Описание отсутствует в событии" };
+  return { title: String(title), description: details.join(" · ") || "Описание отсутствует в нормализованных полях события" };
 }
 
 function extractedEntities(event = {}) {
