@@ -66,6 +66,10 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 
 - [ ] Создать, переименовать и удалить workspace; notes/tags/search/sort сохраняются после перезапуска Firefox.
 - [ ] Прикрепить current event/host/account/incident из popup, IOC из field menu и process правым кликом из графа.
+- [ ] События показывают краткое описание и сортируются по времени в обе стороны; режим «По добавлению» восстанавливает исходный порядок.
+- [ ] Граф расследования связывает 4688 и 4624 через одинаковые host/account, даже когда account находится в `subject` одного события и `object` другого.
+- [ ] Выбор одной и нескольких сущностей строит role-independent `AND`/`OR`-поиск; диапазон ограничивает запрос, существующие события не дублируются, найденное событие добавляется только по кнопке.
+- [ ] Переключатель «Только общие сущности», масштабирование, перемещение, tooltip и «Вписать» работают на светлой и тёмной теме.
 - [ ] Закрыть SIEM и убедиться, что локальные snapshots остаются видимыми; event link корректно деградирует при отсутствии UUID/origin.
 - [ ] JSON/Markdown export пригоден для тикета и не содержит extension API keys/secrets.
 - [ ] JSON и Markdown расследования скачиваются через `blob:` URL без ошибки Firefox `Access denied for URL data:`.

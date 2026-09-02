@@ -7,13 +7,19 @@ import { buildEventSearchUrl } from "../siem/features/related-events.js";
 import { addAiAttachment, appendAiMessage, normalizeAiChat } from "../shared/ai-chat.js";
 import { renderMarkdown } from "../shared/markdown.js";
 import { downloadText } from "../shared/download.js";
+import { buildEntitySearchPredicate, buildInvestigationGraph, describeInvestigationEvent, INVESTIGATION_EVENT_FIELDS, sortWorkspaceItems } from "../shared/investigation-graph.js";
+import { SiemApiClient, filterAvailableEventFields } from "../siem/api/client.js";
+import { createWorkspaceSiemFetch } from "../content/siem-transport.js";
+import { InvestigationCanvas } from "./investigation-canvas.js";
+import { parseSiemTime } from "../shared/time.js";
 
 const byId = (id) => document.getElementById(id);
 const state = {
   workspaces: [], selectedId: null, compareIndexes: new Set(), compare: null,
-  aiIndexes: new Set(), aiChat: normalizeAiChat(), aiPreviewHash: null, settings: null,
+  aiIndexes: new Set(), aiChat: normalizeAiChat(), aiPreviewHash: null, settings: null, relatedResults: [],
 };
 let aiSaveTimer;
+let investigationCanvas;
 
 function setStatus(message, error = false) {
   byId("workspace-status").textContent = message;
@@ -27,6 +33,7 @@ async function request(message) {
 }
 
 function selectedWorkspace() { return state.workspaces.find((workspace) => workspace.id === state.selectedId) ?? null; }
+function formatEventTime(value) { return parseSiemTime(value)?.toLocaleString("ru-RU") ?? "Время не указано"; }
 
 function filteredWorkspaces() {
   const search = byId("workspace-search").value.trim().toLowerCase();
@@ -70,10 +77,11 @@ function eventUrl(workspace, item) {
 function renderItems(workspace) {
   const list = byId("workspace-items");
   list.replaceChildren();
-  workspace.items.forEach((item, index) => {
+  for (const { item, index } of sortWorkspaceItems(workspace.items, byId("workspace-item-sort").value)) {
     const article = document.createElement("article");
     const heading = document.createElement("div"); heading.className = "item-heading";
-    const title = document.createElement("h3"); title.textContent = `${item.type}: ${item.label}`;
+    const eventView = item.type === "event" ? describeInvestigationEvent(item.snapshot) : null;
+    const title = document.createElement("h3"); title.textContent = eventView?.title ?? `${item.type}: ${item.label}`;
     const actions = document.createElement("div"); actions.className = "item-actions";
     if (item.type === "event") {
       const label = document.createElement("label"); label.className = "compare-choice";
@@ -97,11 +105,103 @@ function renderItems(workspace) {
     const remove = document.createElement("button"); remove.type = "button"; remove.className = "danger"; remove.textContent = "Удалить";
     remove.addEventListener("click", () => removeItem(index).catch((error) => setStatus(error.message, true))); actions.append(remove);
     heading.append(title, actions);
-    const value = document.createElement("p"); value.textContent = item.value;
+    const value = document.createElement("p");
+    value.textContent = item.type === "event"
+      ? `${formatEventTime(item.snapshot?.time)} · ${eventView.description}`
+      : item.value;
     article.append(heading, value, snapshotDetails(item));
     list.append(article);
-  });
+  }
   if (!workspace.items.length) list.textContent = "Пока нет прикреплённых объектов. Используйте popup или правый клик по узлу графа.";
+}
+
+function renderGraphSelection(nodes = investigationCanvas?.selectedNodes() ?? []) {
+  const container = byId("graph-selected-entities"); container.replaceChildren();
+  for (const node of nodes) {
+    const chip = document.createElement("span"); chip.textContent = `${node.typeLabel}: ${node.label}`; container.append(chip);
+  }
+  if (!nodes.length) container.textContent = "Сущности для поиска не выбраны.";
+  byId("graph-search").disabled = !nodes.length || !selectedWorkspace()?.siemOrigin;
+}
+
+function renderInvestigationGraph(workspace) {
+  const graph = buildInvestigationGraph(workspace.items, { sharedOnly: byId("graph-shared-only").checked });
+  investigationCanvas.setGraph(graph);
+  const eventCount = graph.nodes.filter((node) => node.kind === "event").length;
+  const entityCount = graph.nodes.length - eventCount;
+  byId("investigation-graph-summary").textContent = `${eventCount} событий · ${entityCount} сущностей · ${graph.edges.length} связей. Квадраты — события, круги — свойства.`;
+  renderGraphSelection();
+}
+
+function renderRelatedResults() {
+  const container = byId("graph-search-results"); container.replaceChildren();
+  for (const event of state.relatedResults) {
+    const article = document.createElement("article");
+    const content = document.createElement("div");
+    const view = describeInvestigationEvent(event);
+    const title = document.createElement("strong"); title.textContent = view.title;
+    const description = document.createElement("p"); description.textContent = `${formatEventTime(event.time)} · ${view.description}`;
+    const add = document.createElement("button"); add.type = "button"; add.textContent = "Добавить в расследование";
+    add.addEventListener("click", () => addRelatedEvent(event).catch((error) => setStatus(error.message, true)));
+    content.append(title, description); article.append(content, add); container.append(article);
+  }
+  if (!state.relatedResults.length) container.textContent = "Новых событий по выбранным связям не найдено.";
+}
+
+function resetRelatedSearch() {
+  state.relatedResults = [];
+  byId("graph-search-status").textContent = "";
+  byId("graph-search-results").replaceChildren();
+  investigationCanvas?.clearSelection();
+}
+
+async function searchRelatedEvents() {
+  const workspace = selectedWorkspace();
+  if (!workspace?.siemOrigin) throw new Error("Расследование не связано с экземпляром SIEM");
+  const selected = investigationCanvas.selectedNodes();
+  if (!selected.length) throw new Error("Выберите на графе хотя бы одну сущность");
+  state.relatedResults = [];
+  byId("graph-search-results").replaceChildren();
+  byId("graph-search").disabled = true;
+  byId("graph-search-status").textContent = "Ищу события в SIEM…";
+  try {
+    const client = new SiemApiClient(workspace.siemOrigin, {
+      fetchImpl: createWorkspaceSiemFetch({ workspaceId: workspace.id, origin: workspace.siemOrigin }), xhrFactory: null,
+    });
+    const metadata = await client.getEventMetadata();
+    const available = new Set((metadata?.fields ?? []).filter((field) => field.filterable === true).map((field) => field.name));
+    const searchable = selected.map((node) => ({ ...node, queryFields: node.queryFields.filter((field) => available.has(field)) })).filter((node) => node.queryFields.length);
+    if (searchable.length !== selected.length) throw new Error("Одна или несколько выбранных сущностей недоступны для фильтрации в этой версии SIEM");
+    const where = buildEntitySearchPredicate(searchable, byId("graph-search-mode").value);
+    if (!where) throw new Error("Выбранные свойства недоступны для фильтрации в этой версии SIEM");
+    const eventTimes = workspace.items.filter((item) => item.type === "event").map((item) => parseSiemTime(item.snapshot?.time)?.valueOf()).filter(Number.isFinite);
+    const margin = Number(byId("graph-search-range").value) || 3600;
+    const now = Date.now();
+    const timeFrom = Math.floor(((eventTimes.length ? Math.min(...eventTimes) : now) - margin * 1000) / 1000);
+    const timeTo = Math.floor(((eventTimes.length ? Math.max(...eventTimes) : now) + margin * 1000) / 1000);
+    const select = filterAvailableEventFields(metadata, INVESTIGATION_EVENT_FIELDS);
+    const response = await client.searchEvents({ where, select, timeFrom, timeTo, limit: 100 });
+    const events = Array.isArray(response) ? response : Array.isArray(response?.events) ? response.events : [];
+    const existing = new Set(workspace.items.filter((item) => item.type === "event").map((item) => String(item.snapshot?.uuid ?? item.value)));
+    state.relatedResults = events.filter((event) => !existing.has(String(event.uuid))).slice(0, 100);
+    byId("graph-search-status").textContent = `Фильтр: ${where} · найдено новых событий: ${state.relatedResults.length}${events.length >= 100 ? " (показаны первые 100)" : ""}`;
+    renderRelatedResults();
+  } finally {
+    renderGraphSelection();
+  }
+}
+
+async function addRelatedEvent(event) {
+  const workspace = selectedWorkspace();
+  const view = describeInvestigationEvent(event);
+  await request({
+    type: "workspace:item:add", workspaceId: workspace.id, siemOrigin: workspace.siemOrigin,
+    item: { type: "event", value: String(event.uuid ?? `${event.time}:${view.title}`), label: view.title, sourceEventUuid: event.uuid ?? null, snapshot: event },
+  });
+  state.relatedResults = state.relatedResults.filter((candidate) => candidate !== event);
+  await refresh({ selectId: workspace.id });
+  byId("graph-search-status").textContent = `Событие «${view.title}» добавлено в расследование`;
+  renderRelatedResults();
 }
 
 function renderCompare(workspace) {
@@ -281,6 +381,7 @@ function renderEditor() {
   byId("workspace-tags").value = workspace.tags.join(", ");
   byId("workspace-notes").value = workspace.notes;
   renderItems(workspace);
+  renderInvestigationGraph(workspace);
   renderCompare(workspace);
   renderAiWorkspace();
 }
@@ -288,9 +389,11 @@ function renderEditor() {
 function render() { renderList(); renderEditor(); }
 
 async function refresh({ selectId = state.selectedId } = {}) {
+  const previousId = state.selectedId;
   const response = await request({ type: "workspace:list" });
   state.workspaces = response.workspaces;
   state.selectedId = state.workspaces.some((workspace) => workspace.id === selectId) ? selectId : state.workspaces[0]?.id ?? null;
+  if (state.selectedId !== previousId) resetRelatedSearch();
   await loadWorkspaceChat();
   render();
 }
@@ -301,6 +404,7 @@ async function selectWorkspace(id) {
   state.compareIndexes.clear();
   state.aiIndexes.clear();
   state.aiPreviewHash = null;
+  resetRelatedSearch();
   await loadWorkspaceChat();
   render();
 }
@@ -363,6 +467,11 @@ byId("workspace-save").addEventListener("click", () => saveCurrent().catch((erro
 byId("workspace-delete").addEventListener("click", () => deleteCurrent().catch((error) => setStatus(error.message, true)));
 byId("workspace-search").addEventListener("input", renderList);
 byId("workspace-sort").addEventListener("change", renderList);
+byId("workspace-item-sort").addEventListener("change", () => selectedWorkspace() && renderItems(selectedWorkspace()));
+byId("graph-shared-only").addEventListener("change", () => selectedWorkspace() && renderInvestigationGraph(selectedWorkspace()));
+byId("graph-fit").addEventListener("click", () => investigationCanvas.fit());
+byId("graph-clear-selection").addEventListener("click", () => investigationCanvas.clearSelection());
+byId("graph-search").addEventListener("click", () => searchRelatedEvents().catch((error) => { byId("graph-search-status").textContent = error.message; setStatus(error.message, true); renderGraphSelection(); }));
 byId("export-json").addEventListener("click", () => download(workspaceToJson(selectedWorkspace()), "json", "application/json").catch((error) => setStatus(error.message, true)));
 byId("export-markdown").addEventListener("click", () => download(workspaceToMarkdown(selectedWorkspace()), "md", "text/markdown").catch((error) => setStatus(error.message, true)));
 byId("copy-compare-json").addEventListener("click", () => navigator.clipboard.writeText(JSON.stringify(state.compare, null, 2)).catch((error) => setStatus(error.message, true)));
@@ -388,6 +497,14 @@ byId("workspace-ai-preview").addEventListener("click", () => previewWorkspaceAi(
 byId("workspace-ai-run").addEventListener("click", () => runWorkspaceAi().catch((error) => setStatus(error.message, true)));
 
 async function initialize() {
+  investigationCanvas = new InvestigationCanvas(byId("investigation-graph-canvas"), byId("investigation-graph-tooltip"), {
+    onSelectionChange: renderGraphSelection,
+    onEventOpen: (node) => {
+      const workspace = selectedWorkspace();
+      const url = eventUrl(workspace, workspace.items[node.itemIndex]);
+      if (url) browser.runtime.sendMessage({ type: "tabs:open", url });
+    },
+  });
   const settingsResponse = await request({ type: "settings:get" });
   state.settings = settingsResponse.settings;
   const requestedId = new URLSearchParams(location.search).get("id");

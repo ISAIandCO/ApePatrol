@@ -260,6 +260,16 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         const origin = normalizeOrigin(new URL(sender.tab.url).origin);
         return { ok: true, response: await proxySiemApiRequest(origin, message) };
       }
+      case "workspace:siem-api": {
+        assertExtensionPage(sender);
+        const workspace = await getWorkspace(message.workspaceId);
+        const origin = normalizeOrigin(message.origin);
+        const settings = await loadSettings();
+        if (!workspace || !origin || workspace.siemOrigin !== origin || !settings.instances.includes(origin)) {
+          throw new Error("Workspace is not linked to a configured SIEM origin");
+        }
+        return { ok: true, response: await proxySiemApiRequest(origin, message) };
+      }
       case "siem:ioc-description:set": {
         if (!await senderIsConfiguredSiem(sender)) throw new Error("Unconfigured SIEM origin");
         const settings = await loadSettings();
