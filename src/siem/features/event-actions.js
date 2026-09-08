@@ -1,3 +1,4 @@
+import { IOC_API_PROVIDERS } from "../../shared/core/providers.js";
 import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
 import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
@@ -11,12 +12,7 @@ const ACTION_FIELDS = [
   "external_link", "uuid",
 ];
 
-const API_PROVIDERS = Object.freeze([
-  { id: "virustotal", name: "VirusTotal API", types: ["ip", "hash", "domain", "url"] },
-  { id: "abuseipdb", name: "AbuseIPDB API", types: ["ip"] },
-  { id: "opentip", name: "Kaspersky OpenTIP API", types: ["ip", "hash", "domain", "url"] },
-  { id: "threatfox", name: "ThreatFox API", types: ["ip", "hash", "domain", "url"] },
-]);
+const API_PROVIDERS = Object.entries(IOC_API_PROVIDERS).map(([id, provider]) => ({ id, name: `${provider.name} API`, types: provider.types }));
 
 function workspaceItem(field, value, ioc, event) {
   const type = ioc ? "ioc"

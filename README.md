@@ -1,5 +1,7 @@
 # ApePatrol
 
+В версии **3.4.15** выделено [общее ядро ApePatrol/KumApe](docs/shared-core.md): API провайдеров, транспорт AI, Markdown, сравнение событий и алгоритмы графа. Изменения ядра переносятся между репозиториями одной командой и проверяются общими тестами.
+
 <p align="center">
   <img src="assets/branding/apepatrol-master.png" width="300">
 </p>

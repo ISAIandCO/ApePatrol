@@ -13,7 +13,7 @@ describe("IOC API enrichment", () => {
     const fetchImpl = vi.fn().mockResolvedValue(response({ data: { attributes: { reputation: -2, last_analysis_stats: { malicious: 2, suspicious: 1, harmless: 8, undetected: 50 } } } }));
     const result = await lookupIoc("virustotal", { type: "hash", value: "d41d8cd98f00b204e9800998ecf8427e" }, { virusTotalApiKey: "key" }, { fetchImpl });
     expect(result).toMatchObject({ provider: "VirusTotal", verdict: "malicious", type: "hash" });
-    expect(fetchImpl.mock.calls[0][0]).toContain("/api/v3/files/");
+    expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/v3/files/");
     expect(fetchImpl.mock.calls[0][1].headers["x-apikey"]).toBe("key");
   });
 

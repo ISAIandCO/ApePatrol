@@ -1,3 +1,4 @@
+import { IOC_API_PROVIDERS } from "./core/providers.js";
 import { normalizeOrigin, parseSafeExternalUrl } from "./url.js";
 import { BUILTIN_FILTERS, normalizeCustomFilter } from "../siem/features/custom-filters.js";
 
@@ -222,11 +223,6 @@ export function migrateLegacySettings(legacy) {
 }
 
 export function normalizeSecrets(input) {
-  return {
-    virusTotalApiKey: typeof input?.virusTotalApiKey === "string" ? input.virusTotalApiKey.trim() : "",
-    abuseIpDbApiKey: typeof input?.abuseIpDbApiKey === "string" ? input.abuseIpDbApiKey.trim() : "",
-    openTipApiKey: typeof input?.openTipApiKey === "string" ? input.openTipApiKey.trim() : "",
-    threatFoxApiKey: typeof input?.threatFoxApiKey === "string" ? input.threatFoxApiKey.trim() : "",
-    llmApiKey: typeof input?.llmApiKey === "string" ? input.llmApiKey.trim() : "",
-  };
+  return Object.fromEntries([...Object.values(IOC_API_PROVIDERS).map(provider => provider.secret), "llmApiKey"]
+    .map(key => [key, typeof input?.[key] === "string" ? input[key].trim() : ""]));
 }

@@ -1,6 +1,6 @@
 {
   "name": "apepatrol",
-  "version": "3.4.14",
+  "version": "3.4.15",
   "private": true,
   "description": "Firefox investigation companion for MaxPatrol SIEM",
   "license": "Apache-2.0",
@@ -19,7 +19,10 @@
     "package:firefox": "npm run build:firefox && web-ext build --source-dir dist/firefox --artifacts-dir artifacts --filename apepatrol-{version}-firefox.zip --overwrite-dest",
     "check:reproducible": "node scripts/check-reproducible.mjs",
     "benchmark:graph": "node scripts/benchmark-process-graph.mjs",
-    "verify:release": "node scripts/verify-release.mjs"
+    "verify:release": "node scripts/verify-release.mjs",
+    "core:check": "node scripts/shared-core.mjs",
+    "core:sync": "node scripts/shared-core.mjs",
+    "test:core": "node --test scripts/core-contracts.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
