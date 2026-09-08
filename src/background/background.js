@@ -1,3 +1,4 @@
+import { requestChatCompletion } from "../shared/core/ai-transport.js";
 import { loadSecrets, loadSettings, loadSettingsState, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
@@ -92,25 +93,11 @@ async function llmRequest(message) {
   };
   const prepared = await prepareAiRequest(message.event, settings.ai, requestOptions);
   if (!message.previewHash || message.previewHash !== prepared.hash) throw new Error("AI preview is stale; review the final payload again");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(endpoint.href, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${secrets.llmApiKey}`, "Content-Type": "application/json" },
-      body: prepared.serialized,
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`LLM endpoint returned HTTP ${response.status}`);
-    const body = await response.json();
-    const responseMessage = body?.choices?.[0]?.message;
-    const content = typeof responseMessage?.content === "string" ? responseMessage.content.slice(0, 100000) : "";
-    const toolCalls = normalizeAiToolCalls(responseMessage, message.contextType);
-    if (!content && !toolCalls.length) throw new Error("Unexpected LLM response schema");
-    return { content, toolCalls, sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
-  } finally {
-    clearTimeout(timer);
-  }
+  const responseMessage = await requestChatCompletion(endpoint, prepared.serialized, { apiKey: secrets.llmApiKey, timeoutMs: 30000 });
+  const content = typeof responseMessage.content === "string" ? responseMessage.content.slice(0, 100000) : "";
+  const toolCalls = normalizeAiToolCalls(responseMessage, message.contextType);
+  if (!content && !toolCalls.length) throw new Error("Unexpected LLM response schema");
+  return { content, toolCalls, sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
 }
 
 browser.runtime.onInstalled.addListener(() => refreshRegistrations().catch(console.error));

@@ -1,15 +1,11 @@
+import { IOC_API_PROVIDERS } from "../shared/core/providers.js";
 import { DEFAULT_SETTINGS, normalizeProvider } from "../shared/settings.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { exportSettingsProfile, importSettingsProfile } from "../shared/profiles.js";
 import { downloadText } from "../shared/download.js";
 
 const state = { settings: structuredClone(DEFAULT_SETTINGS), managed: { active: false, lockedPaths: [] }, secretStatus: {}, permissionStatus: { dataCollection: [], endpointAccess: {} } };
-const IOC_API_ORIGINS = Object.freeze({
-  virustotal: "https://www.virustotal.com/*",
-  abuseipdb: "https://api.abuseipdb.com/*",
-  opentip: "https://opentip.kaspersky.com/*",
-  threatfox: "https://threatfox-api.abuse.ch/*",
-});
+const IOC_API_ORIGINS = Object.freeze(Object.fromEntries(Object.entries(IOC_API_PROVIDERS).map(([id, provider]) => [id, provider.origin])));
 const byId = (id) => document.getElementById(id);
 const featureIds = Object.keys(DEFAULT_SETTINGS.features);
 const lines = (value) => value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);

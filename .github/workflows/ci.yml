@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
+      - run: npm run core:check
+      - run: npm run test:core
       - run: npm test
       - run: npm run benchmark:graph
       - run: npm run package:firefox

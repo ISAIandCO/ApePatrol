@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "files": {
+    "scripts/core-contracts.mjs": "0dde55893801f4da153ddb645ebbd8ad5e0096fd4131679e36ab4b6e550258b3",
+    "scripts/shared-core.mjs": "d2e9e48ad6f782a66e618b8224aa4740632135d64f5d5d7b8e4976d6b52fff4a",
+    "src/shared/core/ai-transport.js": "5cb69f51940ba18445c88e19519b56cb777e78cc034adaf6d1b7698a5b85e524",
+    "src/shared/core/event-compare.js": "75ca7dc0a60a0c0cdf55322c98f37032709e2b3a0fd7fcb6b87c6f0b8526236e",
+    "src/shared/core/force-layout.js": "083d61e227e61a35b5d78d426a367714b14ae531ad05bde69d6a66d02a52567b",
+    "src/shared/core/hash.js": "c569bc6c7b5f4cab68a46d6922cd9b8c8d1cef0fa4d9068d58d8149941f0a72e",
+    "src/shared/core/ioc-enrichment.js": "14cafd60de0bef5900ca3991c2828dd345f54b2266dd14e94010eeb17cc9b5fe",
+    "src/shared/core/ioc.js": "ff1ba924e0c62f4a7779f441b06b8559adb67ea8c0eadf38f0f14e4074cab3e2",
+    "src/shared/core/ip.js": "62f3fa6a8dfe02211fa4be83fb308b77625c6ddc2dc02b7bc0530c845985cab3",
+    "src/shared/core/markdown.js": "08665de4259e11c34f590b3afd8469b87a88c3b6f95abeb458658aa3353a3c5d",
+    "src/shared/core/providers.js": "70054222cae474a1990a6a91a4cfcbe9139cb2ce63e5f5f69f02dc8e7839a830",
+    "src/shared/core/spatial-index.js": "51359f15e146441c68494bc5dffdc804c59828b191b1b8fd498eb5e7c9e6be7b",
+    "src/shared/core/url.js": "78aaeeb76f917286a0624250a768324b6598fca4e513ddddae4eba9517ced5cd"
+  }
+}

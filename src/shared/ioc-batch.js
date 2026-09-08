@@ -1,13 +1,9 @@
+import { IOC_API_PROVIDERS } from "./core/providers.js";
 import { iocFromField } from "./ioc.js";
 
 export const IOC_BATCH_CACHE_KEY = "apePatrolIocBatchCacheV1";
-export const IOC_ADAPTER_VERSIONS = Object.freeze({ virustotal: 1, abuseipdb: 1, opentip: 1, threatfox: 1 });
-export const IOC_BATCH_PROVIDERS = Object.freeze({
-  virustotal: { name: "VirusTotal", types: ["ip", "hash", "domain", "url"] },
-  abuseipdb: { name: "AbuseIPDB", types: ["ip"] },
-  opentip: { name: "Kaspersky OpenTIP", types: ["ip", "hash", "domain", "url"] },
-  threatfox: { name: "ThreatFox", types: ["ip", "hash", "domain", "url"] },
-});
+export const IOC_ADAPTER_VERSIONS = Object.freeze(Object.fromEntries(Object.keys(IOC_API_PROVIDERS).map(id => [id, 1])));
+export const IOC_BATCH_PROVIDERS = IOC_API_PROVIDERS;
 
 export function collectEventIocs(event) {
   const found = new Map();
