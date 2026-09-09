@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AI_CHAT_MAX_BYTES } from "../src/shared/ai-chat.js";
 import { BUILTIN_PROVIDERS, DEFAULT_SETTINGS, LEGACY_LOCAL_SECRETS_KEY, LEGACY_SYNC_STORAGE_KEY, LOCAL_SECRETS_KEY, migrateLegacySettings, normalizeSettings, SYNC_STORAGE_KEY } from "../src/shared/settings.js";
 
 describe("settings schema", () => {
@@ -25,11 +26,16 @@ describe("settings schema", () => {
   });
   it("migrates legacy selected AI fields without weakening the new allowlist mode", () => {
     const migrated = normalizeSettings({ schemaVersion: 4, ai: { mode: "selected", allowFields: ["uuid", "time"] } });
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.process.expansionStepSeconds).toBe(900);
     expect(migrated.ai.selectedFields).toEqual(["uuid", "time"]);
     expect(migrated.ai.allowFields).toEqual(["uuid", "time"]);
     expect(normalizeSettings({ ai: { mode: "allowlist", allowFields: ["uuid"] } }).ai.mode).toBe("allowlist");
+  });
+  it("uses the shared 2 MiB AI budget and migrates the old default", () => {
+    expect(DEFAULT_SETTINGS.ai.maxBytes).toBe(AI_CHAT_MAX_BYTES);
+    expect(normalizeSettings({ schemaVersion: 7, ai: { maxBytes: 64_000 } }).ai.maxBytes).toBe(AI_CHAT_MAX_BYTES);
+    expect(normalizeSettings({ schemaVersion: 8, ai: { maxBytes: 128_000 } }).ai.maxBytes).toBe(128_000);
   });
   it("moves legacy graph expansion to 15 minutes while preserving a new explicit choice", () => {
     expect(normalizeSettings({ schemaVersion: 6, process: { expansionStepSeconds: 3600 } }).process.expansionStepSeconds).toBe(900);
