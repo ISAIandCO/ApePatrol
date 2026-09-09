@@ -1,5 +1,5 @@
-import { compareEvents as compare } from "./core/event-compare.js";
-export { normalizeCompareFieldName, eventDiffToMarkdown } from "./core/event-compare.js";
+import { compareEvents as compare } from "@isaiandco/ape-share-core/events/compare";
+export { normalizeCompareFieldName, eventDiffToMarkdown } from "@isaiandco/ape-share-core/events/compare";
 
 const GROUPS = Object.freeze([
   ["process", /(^|\.)(process|cmdline|executable|image|pid|ppid|hash)(\.|$)/i],

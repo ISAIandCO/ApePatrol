@@ -1,1 +1,1 @@
-export * from "./core/hash.js";
+export * from "@isaiandco/ape-share-core/values/hash";

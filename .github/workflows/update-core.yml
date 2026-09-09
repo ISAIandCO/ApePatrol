@@ -1,0 +1,60 @@
+name: Update ApeShareCore
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 * * *'
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: apesharecore-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - run: npm ci
+      - run: npm run core:update
+      - id: change
+        shell: bash
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            version=$(node -p "require('@isaiandco/ape-share-core/package.json').version")
+            branch="automation/apesharecore-$version"
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo 'changed=false' >> "$GITHUB_OUTPUT"
+              echo "Update branch already exists: $branch"
+            else
+              echo 'changed=true' >> "$GITHUB_OUTPUT"
+              echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - if: steps.change.outputs.changed == 'true'
+        run: npm run core:check && npm run test:core && npm test
+      - if: steps.change.outputs.changed == 'true'
+        run: npm run package:firefox && npm run check:reproducible
+      - if: steps.change.outputs.changed == 'true'
+        run: node scripts/check-core.mjs --built
+      - if: steps.change.outputs.changed == 'true'
+        env:
+          UPDATE_BRANCH: ${{ steps.change.outputs.branch }}
+        run: |
+          git switch -c "$UPDATE_BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m 'Update pinned ApeShareCore dependency'
+          git push origin "$UPDATE_BRANCH"
+          gh pr create --base main --head "$UPDATE_BRANCH" --title 'Update ApeShareCore' --body 'Updates the pinned compatible core version and bumps the extension patch version. Contract tests, extension tests and build passed in the update workflow. Review before merging.'
+          gh workflow run ci.yml --ref "$UPDATE_BRANCH"

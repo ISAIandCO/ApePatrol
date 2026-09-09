@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+const corePackage = path.dirname(fileURLToPath(import.meta.resolve("@isaiandco/ape-share-core/package.json")));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argValue = (name) => {
   const prefix = `${name}=`;
@@ -43,6 +44,9 @@ for (const file of ["popup.html", "popup.css", "process-graph.html", "process-gr
 }
 await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
 await cp(path.join(root, "src", "managed-schema.json"), path.join(outDir, "managed-schema.json"));
+
+await mkdir(path.join(outDir, "licenses"), { recursive: true });
+await cp(path.join(corePackage, "LICENSE"), path.join(outDir, "licenses", "ApeShareCore-LICENSE.txt"));
 
 const manifestTemplate = await readFile(path.join(root, "src/manifest.firefox.json"), "utf8");
 const manifest = JSON.parse(manifestTemplate

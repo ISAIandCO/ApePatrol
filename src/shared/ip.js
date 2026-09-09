@@ -1,1 +1,1 @@
-export * from "./core/ip.js";
+export * from "@isaiandco/ape-share-core/values/ip";

@@ -1,1 +1,1 @@
-export * from "../shared/core/ioc-enrichment.js";
+export * from "@isaiandco/ape-share-core/ioc/client";

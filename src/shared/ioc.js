@@ -1,5 +1,5 @@
-import { normalizeIoc } from "./core/ioc.js";
-export { normalizeIoc } from "./core/ioc.js";
+import { normalizeIoc } from "@isaiandco/ape-share-core/ioc/normalize";
+export { normalizeIoc } from "@isaiandco/ape-share-core/ioc/normalize";
 
 export function iocFromField(field, rawValue) {
   const name = String(field).toLowerCase();

@@ -1,4 +1,4 @@
-import { IOC_API_PROVIDERS } from "./core/providers.js";
+import { IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/providers";
 import { normalizeOrigin, parseSafeExternalUrl } from "./url.js";
 import { BUILTIN_FILTERS, normalizeCustomFilter } from "../siem/features/custom-filters.js";
 

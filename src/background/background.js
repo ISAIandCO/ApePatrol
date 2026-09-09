@@ -1,4 +1,4 @@
-import { requestChatCompletion } from "../shared/core/ai-transport.js";
+import { requestChatCompletion } from "@isaiandco/ape-share-core/ai/transport";
 import { loadSecrets, loadSettings, loadSettingsState, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
