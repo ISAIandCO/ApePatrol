@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdtemp, rm, mkdir, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,7 +59,13 @@ export async function prepareCore() {
     }
     const packed = JSON.parse(execFileSync("npm", ["pack", archive, "--ignore-scripts", "--json", "--pack-destination", temporary], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }))[0];
     if (packed.name !== name || packed.version !== selected.version || !/^sha512-/.test(packed.integrity)) throw new Error("Unexpected core package");
-    execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--ignore-scripts", "--no-audit", "--no-fund", path.join(temporary, path.basename(packed.filename))], { cwd: root, stdio: "inherit" });
+    // Keep npm's dependency-tree reconciliation away from the consumer's dev tools.
+    const installation = path.join(temporary, "installation");
+    execFileSync("npm", ["install", "--prefix", installation, "--install-strategy=nested", "--no-save", "--package-lock=false", "--ignore-scripts", "--no-audit", "--no-fund", path.join(temporary, path.basename(packed.filename))], { cwd: temporary, stdio: "inherit" });
+    const destination = path.join(root, "node_modules", name);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await rm(destination, { recursive: true, force: true });
+    await cp(path.join(installation, "node_modules", name), destination, { recursive: true });
     const metadata = { schemaVersion: 1, name, ...selected, integrity: packed.integrity, source: source ? "candidate" : "github" };
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
     await installedCore();
