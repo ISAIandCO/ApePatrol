@@ -4,6 +4,7 @@ import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
 import { fillUrlTemplate, parseSafeExternalUrl, sanitizeFilenamePart } from "../../shared/url.js";
 import { buildEventSearchUrl } from "./related-events.js";
+import { aroundTime } from "../../shared/time.js";
 
 const ACTION_FIELDS = [
   "src.ip", "dst.ip", "event_src.host", "subject.account.name", "object.account.name",
@@ -46,9 +47,44 @@ function eventFilename(event) {
   return `siem-event-${suffix || "event"}.json`;
 }
 
+function searchScope(settings) {
+  if (settings.searchScope?.mode === "selected") return {
+    searchType: "selected",
+    searchSources: settings.searchScope.searchSources,
+    localSources: settings.searchScope.localSources,
+    groupIds: settings.searchScope.groupIds,
+  };
+  return settings.searchScope?.mode === "all" ? { searchType: "all" } : {};
+}
+
+async function requestEventJson(client, event, settings) {
+  if (!client || !event.uuid) throw new Error("Для API-запроса нужен UUID события");
+  let select = Object.keys(event);
+  try {
+    const metadata = await client.getEventMetadata();
+    const available = (metadata?.fields ?? []).map((field) => field?.name)
+      .filter((name) => typeof name === "string" && /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name));
+    if (available.length) select = available;
+  } catch { /* Visible fields remain a safe fallback. */ }
+  select = [...new Set([...select, "uuid", "time"])];
+  const query = { where: buildEqualityPredicate("uuid", event.uuid), select, ...aroundTime(event.time, 24 * 60 * 60), limit: 2 };
+  const load = (scope) => client.searchEvents({ ...query, scope });
+  let response;
+  try { response = await load(searchScope(settings)); }
+  catch (error) {
+    if (settings.searchScope?.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+    response = await load({});
+  }
+  const events = Array.isArray(response) ? response : Array.isArray(response?.events) ? response.events : [];
+  const match = events.find((item) => String(item?.uuid ?? "") === String(event.uuid));
+  if (!match) throw new Error("Событие не найдено через API в выбранной области поиска");
+  return match;
+}
+
 export class EventFieldActions {
-  constructor(settings) {
+  constructor(settings, client = null) {
     this.settings = settings;
+    this.client = client;
     this.elements = new Set();
     this.eventToolbar = null;
     this.eventMenu = null;
@@ -182,6 +218,11 @@ export class EventFieldActions {
       await navigator.clipboard.writeText(eventJson);
       return "JSON скопирован";
     });
+    add("Запросить JSON по API", "Получить исходное событие через API и скопировать JSON", async () => {
+      const apiEvent = await requestEventJson(this.client, event, this.settings);
+      await navigator.clipboard.writeText(JSON.stringify(apiEvent, null, 2));
+      return "JSON из API скопирован";
+    }, Boolean(this.client && event.uuid));
     add("Копировать ссылку", "Скопировать ссылку на событие", async () => {
       const url = buildEventSearchUrl(location.origin, buildEqualityPredicate("uuid", event.uuid), event.time, "5m");
       await navigator.clipboard.writeText(url);

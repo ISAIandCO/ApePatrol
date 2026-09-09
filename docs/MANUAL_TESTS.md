@@ -77,7 +77,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] JSON и Markdown расследования скачиваются через `blob:` URL без ошибки Firefox `Access denied for URL data:`.
 - [ ] Выбрать 2 и 3 event items: same/changed/only поля сгруппированы в process/network/account/host/rule/raw; copy JSON/Markdown работает.
 - [ ] AI-ответ отображает заголовки, списки, таблицы, ссылки и fenced code; сырой HTML остаётся текстом и не создаёт DOM-элементы.
-- [ ] В открытой карточке события доступны добавление в расследование, копирование JSON/ссылки и скачивание JSON.
+- [ ] В открытой карточке события доступны добавление в расследование, копирование JSON/ссылки и скачивание JSON; «Запросить JSON по API» кладёт в буфер API-версию события с UTC-временем.
 
 ## Rule Intelligence
 

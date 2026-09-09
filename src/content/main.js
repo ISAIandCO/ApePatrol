@@ -67,7 +67,7 @@ async function initialize() {
     if (controller && nextFingerprint === domFingerprint) return;
     controller?.stop();
     controller = new SiemDomController(adapter, [
-      new EventFieldActions(settings),
+      new EventFieldActions(settings, client),
       new FieldAliasesFeature(settings.fieldAliases),
       new EdrUiFeature(settings.features.disableEdrIntegration),
       new IocDescriptionFeature(client, settings, logger),
