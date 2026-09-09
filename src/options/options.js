@@ -1,4 +1,4 @@
-import { IOC_API_PROVIDERS } from "../shared/core/providers.js";
+import { IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/providers";
 import { DEFAULT_SETTINGS, normalizeProvider } from "../shared/settings.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { exportSettingsProfile, importSettingsProfile } from "../shared/profiles.js";

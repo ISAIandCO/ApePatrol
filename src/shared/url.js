@@ -1,1 +1,1 @@
-export * from "./core/url.js";
+export * from "@isaiandco/ape-share-core/values/url";

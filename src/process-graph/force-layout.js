@@ -1,1 +1,1 @@
-export * from "../shared/core/force-layout.js";
+export * from "@isaiandco/ape-share-core/graph/force-layout";

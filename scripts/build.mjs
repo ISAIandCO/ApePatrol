@@ -1,9 +1,12 @@
+import { prepareCore } from "./resolve-core.mjs";
 import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+const coreBuild = await prepareCore();
+const corePackage = path.dirname(fileURLToPath(import.meta.resolve("@isaiandco/ape-share-core/package.json")));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argValue = (name) => {
   const prefix = `${name}=`;
@@ -17,6 +20,7 @@ const updateUrl = `https://github.com/${process.env.GITHUB_REPOSITORY || "ISAIan
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
+await writeFile(path.join(outDir, "apesharecore-build.json"), `${JSON.stringify(coreBuild, null, 2)}\n`);
 
 await build({
   entryPoints: {
@@ -43,6 +47,9 @@ for (const file of ["popup.html", "popup.css", "process-graph.html", "process-gr
 }
 await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
 await cp(path.join(root, "src", "managed-schema.json"), path.join(outDir, "managed-schema.json"));
+
+await mkdir(path.join(outDir, "licenses"), { recursive: true });
+await cp(path.join(corePackage, "LICENSE"), path.join(outDir, "licenses", "ApeShareCore-LICENSE.txt"));
 
 const manifestTemplate = await readFile(path.join(root, "src/manifest.firefox.json"), "utf8");
 const manifest = JSON.parse(manifestTemplate

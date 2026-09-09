@@ -1,1 +1,1 @@
-export * from "../shared/core/spatial-index.js";
+export * from "@isaiandco/ape-share-core/graph/spatial-index";

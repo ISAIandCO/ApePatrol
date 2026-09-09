@@ -1,1 +1,1 @@
-export * from "./core/markdown.js";
+export * from "@isaiandco/ape-share-core/ui/markdown";

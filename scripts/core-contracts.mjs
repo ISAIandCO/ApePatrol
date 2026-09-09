@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lookupIoc, IOC_API_PROVIDERS } from "../src/shared/core/ioc-enrichment.js";
-import { classifyIp } from "../src/shared/core/ip.js";
-import { chatEndpoint, requestChatCompletion } from "../src/shared/core/ai-transport.js";
-import { compareEvents } from "../src/shared/core/event-compare.js";
+import { lookupIoc, IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/client";
+import { classifyIp } from "@isaiandco/ape-share-core/values/ip";
+import { chatEndpoint, requestChatCompletion } from "@isaiandco/ape-share-core/ai/transport";
+import { compareEvents } from "@isaiandco/ape-share-core/events/compare";
 
 const cases = [
   ["virustotal", "hash", "a".repeat(64), "GET", "x-apikey", "/api/v3/files/", { data: { attributes: { last_analysis_stats: { malicious: 1 } } } }],

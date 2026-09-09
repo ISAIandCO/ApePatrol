@@ -1,4 +1,4 @@
-import { IOC_API_PROVIDERS } from "../../shared/core/providers.js";
+import { mountIocActions } from "@isaiandco/ape-share-core/ioc/ui";
 import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
 import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
@@ -12,7 +12,6 @@ const ACTION_FIELDS = [
   "external_link", "uuid",
 ];
 
-const API_PROVIDERS = Object.entries(IOC_API_PROVIDERS).map(([id, provider]) => ({ id, name: `${provider.name} API`, types: provider.types }));
 
 function workspaceItem(field, value, ioc, event) {
   const type = ioc ? "ioc"
@@ -170,6 +169,7 @@ export class EventFieldActions {
         }
       });
       menu.append(button);
+      return button;
     };
 
     const item = this.settings.features.investigationWorkspace && eventWorkspaceItem(event);
@@ -233,6 +233,7 @@ export class EventFieldActions {
         }
       });
       menu.append(button);
+      return button;
     };
     add("Copy value", () => navigator.clipboard.writeText(String(value)));
     const predicate = buildEqualityPredicate(field, value);
@@ -259,17 +260,16 @@ export class EventFieldActions {
       apiHeading.className = "apepatrol-action-heading";
       apiHeading.textContent = "Проверить через API";
       menu.append(apiHeading);
-      for (const provider of API_PROVIDERS.filter((item) => item.types.includes(ioc.type))) {
-        add(provider.name, async (button) => {
-          button.disabled = true;
-          button.textContent = `${provider.name}: запрос…`;
-          const response = await browser.runtime.sendMessage({ type: "enrichment:ioc", provider: provider.id, ioc });
-          button.disabled = false;
-          button.textContent = provider.name;
+      mountIocActions(menu, {
+        ioc,
+        addButton: (label, run) => add(label, run, { keepOpen: true }),
+        lookup: async (provider, input) => {
+          const response = await browser.runtime.sendMessage({ type: "enrichment:ioc", provider, ioc: input });
           if (!response?.ok) throw new Error(response?.error ?? "Провайдер не вернул результат");
-          renderLookupResult(menu, response.result);
-        }, { keepOpen: true });
-      }
+          return response.result;
+        },
+        onResult: result => renderLookupResult(menu, result),
+      });
       const linkHeading = document.createElement("span");
       linkHeading.className = "apepatrol-action-heading";
       linkHeading.textContent = "Открыть отчёт на сайте";
