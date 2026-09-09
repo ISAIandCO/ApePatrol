@@ -3,6 +3,7 @@ import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
 import { iocFromField } from "../../shared/ioc.js";
 import { classifyIp } from "../../shared/ip.js";
 import { fillUrlTemplate, parseSafeExternalUrl, sanitizeFilenamePart } from "../../shared/url.js";
+import { filterAvailableEventFields } from "../api/client.js";
 import { buildEventSearchUrl } from "./related-events.js";
 import { aroundTime } from "../../shared/time.js";
 
@@ -62,9 +63,9 @@ async function requestEventJson(client, event, settings) {
   let select = Object.keys(event);
   try {
     const metadata = await client.getEventMetadata();
-    const available = (metadata?.fields ?? []).map((field) => field?.name)
+    const fields = (metadata?.fields ?? []).map((field) => field?.name)
       .filter((name) => typeof name === "string" && /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name));
-    if (available.length) select = available;
+    if (fields.length) select = filterAvailableEventFields(metadata, [...fields, "uuid", "time"]);
   } catch { /* Visible fields remain a safe fallback. */ }
   select = [...new Set([...select, "uuid", "time"])];
   const query = { where: buildEqualityPredicate("uuid", event.uuid), select, ...aroundTime(event.time, 24 * 60 * 60), limit: 2 };

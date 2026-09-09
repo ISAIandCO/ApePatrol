@@ -133,7 +133,12 @@ describe("MP SIEM DOM adapter fixtures", () => {
     globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, workspace: { title: "IR-1" }, downloadId: 7 }) } };
     const adapter = new SiemDomAdapter();
     const client = {
-      getEventMetadata: vi.fn().mockResolvedValue({ fields: [{ name: "uuid" }, { name: "time" }, { name: "event_src.host" }] }),
+      getEventMetadata: vi.fn().mockResolvedValue({ fields: [
+        { name: "uuid", filterable: true },
+        { name: "time", filterable: false },
+        { name: "event_src.host", filterable: true },
+        { name: "unsupported.metadata.field", filterable: false },
+      ] }),
       searchEvents: vi.fn().mockResolvedValue({ events: [{ uuid: "event-toolbar", time: "2026-09-01T07:00:00Z", "event_src.host": "host-1" }] }),
     };
     const feature = new EventFieldActions({ features: { eventActions: true, investigationWorkspace: true }, searchScope: { mode: "default" }, externalProviders: [] }, client);
@@ -150,7 +155,9 @@ describe("MP SIEM DOM adapter fixtures", () => {
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "workspace:item:add", item: expect.objectContaining({ type: "event", value: "event-toolbar" }) }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"uuid": "event-toolbar"'));
     await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"time": "2026-09-01T07:00:00Z"')));
-    expect(client.searchEvents).toHaveBeenCalledWith(expect.objectContaining({ where: "uuid = 'event-toolbar'", limit: 2 }));
+    expect(client.searchEvents).toHaveBeenCalledWith(expect.objectContaining({
+      where: "uuid = 'event-toolbar'", limit: 2, select: ["uuid", "time", "event_src.host"],
+    }));
     feature.unmount();
   });
   it("detects native correlation description", async () => {
