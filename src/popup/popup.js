@@ -9,6 +9,7 @@ import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../sha
 import { addAiAttachment, appendAiMessage, eventAiAttachment, normalizeAiChat } from "../shared/ai-chat.js";
 import { renderMarkdown } from "../shared/markdown.js";
 import { downloadText } from "../shared/download.js";
+import { requestAiCompletion } from "../shared/ai-request.js";
 
 const state = {
   tab: null,
@@ -675,8 +676,7 @@ byId("ai-run").addEventListener("click", async () => {
   const outbound = conversationWithDraft();
   byId("ai-preview-meta").textContent = "Ожидаю ответ настроенного AI endpoint…";
   try {
-    const response = await browser.runtime.sendMessage({
-      type: "enrichment:llm",
+    const result = await requestAiCompletion({
       event: state.context.event,
       selectedFields: selectedAiFields(),
       conversation: outbound,
@@ -685,12 +685,11 @@ byId("ai-run").addEventListener("click", async () => {
       previewHash: state.aiPreviewHash,
       confirmed: true,
     });
-    if (!response?.ok) throw new Error(response?.error ?? "AI endpoint request failed");
     state.aiChat = appendAiMessage(state.aiChat, outbound.at(-1));
-    const toolCalls = response.result.toolCalls ?? [];
+    const toolCalls = result.toolCalls ?? [];
     state.aiChat = appendAiMessage(state.aiChat, {
       role: "assistant",
-      content: response.result.content || `Запрошены дополнительные данные SIEM: ${toolCalls.map(describeToolCall).join("; ")}`,
+      content: result.content || `Запрошены дополнительные данные SIEM: ${toolCalls.map(describeToolCall).join("; ")}`,
       toolCalls,
     });
     state.aiChat.draft = "";

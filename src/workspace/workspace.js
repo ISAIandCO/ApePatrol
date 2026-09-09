@@ -12,6 +12,7 @@ import { SiemApiClient, filterAvailableEventFields } from "../siem/api/client.js
 import { createWorkspaceSiemFetch } from "../content/siem-transport.js";
 import { InvestigationCanvas } from "./investigation-canvas.js";
 import { parseSiemTime } from "../shared/time.js";
+import { requestAiCompletion } from "../shared/ai-request.js";
 
 const byId = (id) => document.getElementById(id);
 const state = {
@@ -366,16 +367,16 @@ async function runWorkspaceAi() {
   if (!state.aiPreviewHash) return;
   if (!confirm(`Отправить в ${state.settings.ai.endpoint} ровно показанный payload?`)) return;
   const outbound = workspaceConversationWithDraft();
-  const response = await request({
-    type: "enrichment:llm", conversation: outbound, contextType: "workspace",
+  const result = await requestAiCompletion({
+    conversation: outbound, contextType: "workspace",
     selectedFields: state.settings.ai.selectedFields, allowSiemTools: state.aiChat.allowSiemTools,
     previewHash: state.aiPreviewHash, confirmed: true,
   });
   state.aiChat = appendAiMessage(state.aiChat, outbound.at(-1));
-  const toolCalls = response.result.toolCalls ?? [];
+  const toolCalls = result.toolCalls ?? [];
   state.aiChat = appendAiMessage(state.aiChat, {
     role: "assistant",
-    content: response.result.content || `Запрошены дополнительные данные: ${toolCalls.map(workspaceToolDescription).join("; ")}`,
+    content: result.content || `Запрошены дополнительные данные: ${toolCalls.map(workspaceToolDescription).join("; ")}`,
     toolCalls,
   });
   state.aiChat.draft = "";
