@@ -283,7 +283,10 @@ export class EventFieldActions {
       const url = fillUrlTemplate(provider.urlTemplate, { [provider.type]: value });
       if (url) add(provider.name, () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));
     }
-    if (ioc) add("Настройки IOC-провайдеров…", () => browser.runtime.openOptionsPage());
+    if (ioc) add("Настройки IOC-провайдеров…", async () => {
+      const response = await browser.runtime.sendMessage({ type: "options:open" });
+      if (!response?.ok) throw new Error(response?.error ?? "Не удалось открыть настройки ApePatrol");
+    });
     document.body.append(menu);
     this.actionMenu = menu;
     const controller = new AbortController();

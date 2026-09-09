@@ -14,11 +14,11 @@ export const DEFAULT_AI_SELECTED_FIELDS = Object.freeze([
 ]);
 
 export const BUILTIN_PROVIDERS = Object.freeze([
-  { id: "virustotal-ip", name: "VirusTotal — IP", type: "ip", urlTemplate: "https://www.virustotal.com/gui/ip-address/${ip}/details", enabled: true },
-  { id: "abuseipdb-ip", name: "AbuseIPDB — IP", type: "ip", urlTemplate: "https://www.abuseipdb.com/check/${ip}", enabled: true },
-  { id: "opentip-ip", name: "Kaspersky OpenTIP — IP", type: "ip", urlTemplate: "https://opentip.kaspersky.com/${ip}", enabled: true },
-  { id: "shodan-ip", name: "Shodan — IP", type: "ip", urlTemplate: "https://www.shodan.io/host/${ip}", enabled: true },
-  { id: "greynoise-ip", name: "GreyNoise — IP", type: "ip", urlTemplate: "https://viz.greynoise.io/ip/${ip}", enabled: true },
+  { id: "virustotal-ip", name: "VirusTotal — IP", type: "ip", urlTemplate: "https://www.virustotal.com/gui/ip-address/${ip}/details", allowPrivate: true, enabled: true },
+  { id: "abuseipdb-ip", name: "AbuseIPDB — IP", type: "ip", urlTemplate: "https://www.abuseipdb.com/check/${ip}", allowPrivate: true, enabled: true },
+  { id: "opentip-ip", name: "Kaspersky OpenTIP — IP", type: "ip", urlTemplate: "https://opentip.kaspersky.com/${ip}", allowPrivate: true, enabled: true },
+  { id: "shodan-ip", name: "Shodan — IP", type: "ip", urlTemplate: "https://www.shodan.io/host/${ip}", allowPrivate: true, enabled: true },
+  { id: "greynoise-ip", name: "GreyNoise — IP", type: "ip", urlTemplate: "https://viz.greynoise.io/ip/${ip}", allowPrivate: true, enabled: true },
   { id: "virustotal-hash", name: "VirusTotal — хеш", type: "hash", urlTemplate: "https://www.virustotal.com/gui/file/${hash}/detection", enabled: true },
   { id: "opentip-hash", name: "Kaspersky OpenTIP — хеш", type: "hash", urlTemplate: "https://opentip.kaspersky.com/${hash}", enabled: true },
   { id: "malwarebazaar-hash", name: "MalwareBazaar — хеш", type: "hash", urlTemplate: "https://bazaar.abuse.ch/sample/${hash}/", enabled: true },

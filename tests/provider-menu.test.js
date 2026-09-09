@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { EventFieldActions } from "../src/siem/features/event-actions.js";
+import { normalizeSettings } from "../src/shared/settings.js";
 
 let actions;
 afterEach(() => { actions?.unmount(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
@@ -23,4 +24,21 @@ it("the shared provider module preserves the existing SIEM menu on success and f
   await vi.waitFor(() => expect(menu.textContent).toContain("provider unavailable"));
   expect(button.textContent).toBe("ThreatFox API"); expect(button.disabled).toBe(false);
   expect(actions.actionMenu).toBe(menu);
+});
+
+it("keeps built-in website reports available for non-public IPs and opens options through the background", async () => {
+  const sendMessage = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal("browser", { runtime: { sendMessage } });
+  const anchor = document.createElement("button"); document.body.append(anchor);
+  anchor.getBoundingClientRect = () => ({ left: 20, right: 40, top: 20, bottom: 40 });
+  actions = new EventFieldActions(normalizeSettings());
+  actions.openMenu(anchor, "src.ip", "10.0.0.1", { uuid: "event", time: "2026-09-09T00:00:00Z" });
+
+  const buttons = [...actions.actionMenu.querySelectorAll("button")];
+  expect(buttons.map(item => item.textContent)).toEqual(expect.arrayContaining([
+    "VirusTotal — IP", "AbuseIPDB — IP", "Kaspersky OpenTIP — IP", "Shodan — IP", "GreyNoise — IP",
+  ]));
+  const options = buttons.find(item => item.textContent === "Настройки IOC-провайдеров…");
+  options.click();
+  await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ type: "options:open" }));
 });

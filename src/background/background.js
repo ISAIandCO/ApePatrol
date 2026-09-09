@@ -167,6 +167,11 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         await browser.tabs.create({ url: url.href });
         return { ok: true };
       }
+      case "options:open": {
+        if (!isExtensionPageSender(sender, browser.runtime.getURL("/")) && !await senderIsConfiguredSiem(sender)) throw new Error("Options are restricted to ApePatrol and configured SIEM pages");
+        await browser.runtime.openOptionsPage();
+        return { ok: true };
+      }
       case "enrichment:permission-status": {
         assertExtensionPage(sender);
         const all = await browser.permissions.getAll();
