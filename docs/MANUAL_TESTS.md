@@ -103,6 +103,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] Event value and custom filter containing HTML remain inert text.
 - [ ] LLM response `<img src=x onerror=alert(1)>` remains inert text.
 - [ ] AI preview показывает точное финальное JSON-тело, реальный UTF-8 byte count и endpoint; Authorization/API key в preview отсутствует.
+- [ ] Медленный AI-ответ до 15 минут приходит в popup и Workspace без ошибки фонового message-channel.
 - [ ] Selected fields, strict allowlist, redacted и full дают ожидаемые разные payload; full показывает отдельное предупреждение.
 - [ ] Закрытие и повторное открытие popup в той же SIEM-вкладке сохраняет AI-диалог, черновик и выбранный раздел; переход на другое событие не сбрасывает диалог.
 - [ ] «Добавить текущее событие» прикладывает новое событие к следующему сообщению без дубликатов; закрытие SIEM-вкладки удаляет её session-диалог.

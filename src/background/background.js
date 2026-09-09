@@ -1,4 +1,3 @@
-import { requestChatCompletion } from "@isaiandco/ape-share-core/ai/transport";
 import { loadSecrets, loadSettings, loadSettingsState, saveSecrets, saveSettings } from "../shared/storage.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
 import { isExtensionPageSender } from "../shared/runtime-sender.js";
@@ -7,7 +6,8 @@ import { IOC_API_PROVIDERS, lookupIoc } from "./ioc-enrichment.js";
 import { setIocDescription } from "./ioc-description.js";
 import { applyTableListMutation } from "./table-list.js";
 import { deleteGraphSnapshot, getGraphSnapshot, saveGraphSnapshot, updateGraphSnapshot } from "./graph-snapshots.js";
-import { normalizeAiToolCalls, prepareAiRequest } from "../shared/ai-payload.js";
+import { prepareAiRequest } from "../shared/ai-payload.js";
+import { requestAiCompletion } from "../shared/ai-request.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 import { cancelIocBatch, runIocBatch } from "./ioc-batch.js";
 import { deleteTabSession, getTabSession, saveTabSession } from "./tab-sessions.js";
@@ -75,29 +75,6 @@ async function hasDataPermission(types) {
   } catch {
     return false;
   }
-}
-
-async function llmRequest(message) {
-  if (message.confirmed !== true) throw new Error("Operator confirmation is required");
-  const [settings, secrets] = await Promise.all([loadSettings(), loadSecrets()]);
-  if (!settings.features.aiAssistant) throw new Error("AI assistant is disabled");
-  const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
-  if (!endpoint || !settings.ai.model || !secrets.llmApiKey) throw new Error("AI endpoint, model, or key is not configured");
-  if (!await browser.permissions.contains({ origins: [`${endpoint.origin}/*`] })) throw new Error("AI endpoint host permission is missing");
-  if (!await hasDataPermission(["websiteContent", "authenticationInfo"])) throw new Error("Firefox data-collection permission is missing");
-  const requestOptions = {
-    selectedFields: message.selectedFields,
-    conversation: message.conversation,
-    contextType: message.contextType,
-    allowSiemTools: message.allowSiemTools,
-  };
-  const prepared = await prepareAiRequest(message.event, settings.ai, requestOptions);
-  if (!message.previewHash || message.previewHash !== prepared.hash) throw new Error("AI preview is stale; review the final payload again");
-  const responseMessage = await requestChatCompletion(endpoint, prepared.serialized, { apiKey: secrets.llmApiKey, timeoutMs: 30000 });
-  const content = typeof responseMessage.content === "string" ? responseMessage.content.slice(0, 100000) : "";
-  const toolCalls = normalizeAiToolCalls(responseMessage, message.contextType);
-  if (!content && !toolCalls.length) throw new Error("Unexpected LLM response schema");
-  return { content, toolCalls, sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
 }
 
 browser.runtime.onInstalled.addListener(() => refreshRegistrations().catch(console.error));
@@ -196,7 +173,7 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         return { ok: true, cancelled: cancelIocBatch(message.requestId) };
       case "enrichment:llm":
         assertExtensionPage(sender);
-        return { ok: true, result: await llmRequest(message) };
+        return { ok: true, result: await requestAiCompletion(message) };
       case "ai:preview": {
         assertExtensionPage(sender);
         const settings = await loadSettings();
