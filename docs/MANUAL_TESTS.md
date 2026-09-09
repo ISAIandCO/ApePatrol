@@ -77,7 +77,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] JSON и Markdown расследования скачиваются через `blob:` URL без ошибки Firefox `Access denied for URL data:`.
 - [ ] Выбрать 2 и 3 event items: same/changed/only поля сгруппированы в process/network/account/host/rule/raw; copy JSON/Markdown работает.
 - [ ] AI-ответ отображает заголовки, списки, таблицы, ссылки и fenced code; сырой HTML остаётся текстом и не создаёт DOM-элементы.
-- [ ] В открытой карточке события доступны добавление в расследование, копирование JSON/ссылки и скачивание JSON.
+- [ ] В открытой карточке события доступны добавление в расследование, копирование JSON/ссылки и скачивание JSON; «Запросить JSON по API» кладёт в буфер API-версию события с UTC-временем.
 
 ## Rule Intelligence
 
@@ -104,6 +104,7 @@ Record Firefox, MP SIEM build, role, result and evidence for every row before re
 - [ ] LLM response `<img src=x onerror=alert(1)>` remains inert text.
 - [ ] AI preview показывает точное финальное JSON-тело, реальный UTF-8 byte count и endpoint; Authorization/API key в preview отсутствует.
 - [ ] Медленный AI-ответ до 15 минут приходит в popup и Workspace без ошибки фонового message-channel.
+- [ ] Полный AI payload до 2 MiB принимается; одно и то же событие встречается в нём один раз после нескольких реплик диалога.
 - [ ] Selected fields, strict allowlist, redacted и full дают ожидаемые разные payload; full показывает отдельное предупреждение.
 - [ ] Закрытие и повторное открытие popup в той же SIEM-вкладке сохраняет AI-диалог, черновик и выбранный раздел; переход на другое событие не сбрасывает диалог.
 - [ ] «Добавить текущее событие» прикладывает новое событие к следующему сообщению без дубликатов; закрытие SIEM-вкладки удаляет её session-диалог.

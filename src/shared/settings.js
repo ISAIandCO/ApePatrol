@@ -1,4 +1,5 @@
 import { IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/providers";
+import { AI_CHAT_MAX_BYTES } from "@isaiandco/ape-share-core/ai/chat";
 import { normalizeOrigin, parseSafeExternalUrl } from "./url.js";
 import { BUILTIN_FILTERS, normalizeCustomFilter } from "../siem/features/custom-filters.js";
 
@@ -29,7 +30,7 @@ export const BUILTIN_PROVIDERS = Object.freeze([
 ]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  schemaVersion: 7,
+  schemaVersion: 8,
   instances: [],
   features: {
     eventActions: true,
@@ -74,7 +75,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     selectedFields: DEFAULT_AI_SELECTED_FIELDS,
     allowFields: [],
     denyFields: ["password", "token", "cookie", "authorization", "api_key", "secret", "body", "text"],
-    maxBytes: 64000,
+    maxBytes: AI_CHAT_MAX_BYTES,
   },
   debugLogging: false,
 });
@@ -136,7 +137,7 @@ export function normalizeSettings(input) {
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    schemaVersion: 7,
+    schemaVersion: 8,
     instances,
     features,
     iocListName: String(input.iocListName || defaults.iocListName).slice(0, 120),
@@ -169,7 +170,10 @@ export function normalizeSettings(input) {
           : defaults.ai.selectedFields,
       allowFields: Array.isArray(input.ai?.allowFields) ? input.ai.allowFields.map(String) : [],
       denyFields: Array.isArray(input.ai?.denyFields) ? input.ai.denyFields.map(String) : defaults.ai.denyFields,
-      maxBytes: boundedInteger(input.ai?.maxBytes, defaults.ai.maxBytes, 1024, 200000),
+      maxBytes: boundedInteger(
+        Number(input.schemaVersion ?? 0) < 8 && input.ai?.maxBytes === 64_000 ? defaults.ai.maxBytes : input.ai?.maxBytes,
+        defaults.ai.maxBytes, 1024, AI_CHAT_MAX_BYTES,
+      ),
     },
     debugLogging: bool(input.debugLogging, false),
   };

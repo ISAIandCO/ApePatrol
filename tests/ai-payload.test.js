@@ -69,6 +69,23 @@ describe("AI privacy preview", () => {
     expect(result.serialized).not.toContain("password");
   });
 
+  it("sends repeated conversation context once while keeping every text turn", async () => {
+    const event = { type: "event", value: "one", label: "One", snapshot: { uuid: "one" } };
+    const result = await prepareAiRequest({}, settings(), {
+      selectedFields: ["uuid"],
+      conversation: [
+        { role: "user", content: "First question", attachments: [event] },
+        { role: "assistant", content: "First answer" },
+        { role: "user", content: "Second question", attachments: [event] },
+      ],
+    });
+    const content = result.body.messages.map((message) => message.content).join("\n");
+    expect(content).toContain("First question");
+    expect(content).toContain("First answer");
+    expect(content).toContain("Second question");
+    expect(content.match(/\"uuid\":\"one\"/g)).toHaveLength(1);
+  });
+
   it("accepts only known, valid tool calls", () => {
     const calls = normalizeAiToolCalls({ tool_calls: [
       { id: "1", function: { name: "get_asset_context", arguments: "{}" } },

@@ -132,7 +132,11 @@ describe("MP SIEM DOM adapter fixtures", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
     globalThis.browser = { runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true, workspace: { title: "IR-1" }, downloadId: 7 }) } };
     const adapter = new SiemDomAdapter();
-    const feature = new EventFieldActions({ features: { eventActions: true, investigationWorkspace: true }, externalProviders: [] });
+    const client = {
+      getEventMetadata: vi.fn().mockResolvedValue({ fields: [{ name: "uuid" }, { name: "time" }, { name: "event_src.host" }] }),
+      searchEvents: vi.fn().mockResolvedValue({ events: [{ uuid: "event-toolbar", time: "2026-09-01T07:00:00Z", "event_src.host": "host-1" }] }),
+    };
+    const feature = new EventFieldActions({ features: { eventActions: true, investigationWorkspace: true }, searchScope: { mode: "default" }, externalProviders: [] }, client);
     feature.onDomChanged({ event: adapter.extractEvent(), adapter });
 
     const card = adapter.getEventCard();
@@ -140,11 +144,13 @@ describe("MP SIEM DOM adapter fixtures", () => {
     expect(card.querySelector(".mc-sidebar-header__title > .apepatrol-event-actions")?.textContent).toBe("🐵 Действия");
     expect(adapter.getEventTime()).toBe("2026-09-01T10:00:00Z");
     const buttons = [...document.querySelectorAll(".apepatrol-event-actions-menu button")];
-    expect(buttons.map((button) => button.textContent)).toEqual(["📌 В расследование", "Копировать JSON", "Копировать ссылку", "Скачать JSON"]);
-    buttons[0].click(); buttons[1].click(); buttons[3].click();
+    expect(buttons.map((button) => button.textContent)).toEqual(["📌 В расследование", "Копировать JSON", "Запросить JSON по API", "Копировать ссылку", "Скачать JSON"]);
+    buttons[0].click(); buttons[1].click(); buttons[2].click(); buttons[4].click();
     await vi.waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "downloads:text" })));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "workspace:item:add", item: expect.objectContaining({ type: "event", value: "event-toolbar" }) }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"uuid": "event-toolbar"'));
+    await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"time": "2026-09-01T07:00:00Z"')));
+    expect(client.searchEvents).toHaveBeenCalledWith(expect.objectContaining({ where: "uuid = 'event-toolbar'", limit: 2 }));
     feature.unmount();
   });
   it("detects native correlation description", async () => {
