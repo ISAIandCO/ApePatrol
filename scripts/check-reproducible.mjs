@@ -1,8 +1,13 @@
+import { prepareCore } from "./resolve-core.mjs";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+
+const core = await prepareCore();
+process.env.APE_CORE_SHA = core.sha;
+process.env.APE_CORE_PREPARED = "1";
 
 const temporary = await mkdtemp(path.join(tmpdir(), "apepatrol-repro-"));
 const first = path.join(temporary, "first");

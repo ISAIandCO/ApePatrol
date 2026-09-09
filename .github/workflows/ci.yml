@@ -22,6 +22,11 @@ jobs:
           node-version: 22.22.2
           cache: npm
       - run: npm ci
+      - name: Select compatible core once for tests and build
+        run: |
+          npm run core:prepare
+          echo "APE_CORE_SHA=$(node -p 'require("./.apesharecore.json").sha')" >> "$GITHUB_ENV"
+          echo 'APE_CORE_PREPARED=1' >> "$GITHUB_ENV"
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run core:check

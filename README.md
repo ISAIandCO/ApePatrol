@@ -1,6 +1,6 @@
 # ApePatrol
 
-В версии **3.4.16** общее ядро подключено из отдельного репозитория [ApeShareCore](https://github.com/ISAIandCO/ApeShareCore) как библиотека с закреплённым SHA. [Модули, контракты и автоматические PR обновления](docs/shared-core.md).
+В версии **3.4.16** общее ядро подключено из отдельного репозитория [ApeShareCore](https://github.com/ISAIandCO/ApeShareCore) как библиотека, автоматически выбираемая при сборке. [Модули, контракты и метаданные сборки](docs/shared-core.md).
 
 <p align="center">
   <img src="assets/branding/apepatrol-master.png" width="300">

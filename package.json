@@ -10,19 +10,22 @@
   },
   "scripts": {
     "lint": "eslint src scripts tests",
-    "test": "vitest run",
-    "build:raw": "node scripts/build.mjs",
+    "test": "node scripts/with-core.mjs vitest run",
+    "build:raw": "node scripts/with-core.mjs node scripts/build.mjs",
     "verify:policy": "node scripts/verify-policy.mjs",
     "lint:firefox": "node scripts/lint-firefox.mjs",
-    "build:firefox": "npm run lint && npm test && node scripts/build.mjs && npm run verify:policy && npm run verify:release && npm run lint:firefox",
-    "build:self-hosted": "npm run lint && npm test && node scripts/build.mjs --self-hosted && npm run verify:policy && npm run verify:release && node scripts/lint-firefox.mjs --self-hosted",
-    "package:firefox": "npm run build:firefox && web-ext build --source-dir dist/firefox --artifacts-dir artifacts --filename apepatrol-{version}-firefox.zip --overwrite-dest",
-    "check:reproducible": "node scripts/check-reproducible.mjs",
-    "benchmark:graph": "node scripts/benchmark-process-graph.mjs",
+    "build:firefox": "node scripts/with-core.mjs npm run build:firefox:resolved",
+    "build:self-hosted": "node scripts/with-core.mjs npm run build:self-hosted:resolved",
+    "package:firefox": "node scripts/with-core.mjs npm run package:firefox:resolved",
+    "check:reproducible": "node scripts/with-core.mjs node scripts/check-reproducible.mjs",
+    "benchmark:graph": "node scripts/with-core.mjs node scripts/benchmark-process-graph.mjs",
     "verify:release": "node scripts/verify-release.mjs",
-    "core:check": "node scripts/check-core.mjs",
-    "test:core": "node --test scripts/core-contracts.mjs scripts/core-update-contracts.mjs",
-    "core:update": "node scripts/update-core.mjs"
+    "core:check": "node scripts/with-core.mjs node scripts/check-core.mjs",
+    "test:core": "node scripts/with-core.mjs node --test scripts/core-contracts.mjs scripts/core-resolution-contracts.mjs",
+    "build:self-hosted:resolved": "npm run lint && npm test && node scripts/build.mjs --self-hosted && npm run verify:policy && npm run verify:release && node scripts/lint-firefox.mjs --self-hosted",
+    "build:firefox:resolved": "npm run lint && npm test && node scripts/build.mjs && npm run verify:policy && npm run verify:release && npm run lint:firefox",
+    "package:firefox:resolved": "npm run build:firefox && web-ext build --source-dir dist/firefox --artifacts-dir artifacts --filename apepatrol-{version}-firefox.zip --overwrite-dest",
+    "core:prepare": "node scripts/with-core.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
@@ -32,7 +35,7 @@
     "vitest": "4.1.11",
     "web-ext": "10.6.0"
   },
-  "dependencies": {
-    "@isaiandco/ape-share-core": "https://codeload.github.com/ISAIandCO/ApeShareCore/tar.gz/d15097c34c49a90525c5cbe174566a59d34927a0"
+  "apeShareCore": {
+    "major": 1
   }
 }
