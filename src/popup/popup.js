@@ -7,7 +7,7 @@ import { loadOptionalPopupFeatures } from "./feature-loader.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../shared/ioc-batch.js";
 import { addAiAttachment, appendAiMessage, eventAiAttachment, normalizeAiChat } from "../shared/ai-chat.js";
-import { renderMarkdown } from "../shared/markdown.js";
+import { renderChatMessages } from "@isaiandco/ape-share-core/ui/chat-messages";
 import { downloadText } from "../shared/download.js";
 import { requestAiCompletion } from "../shared/ai-request.js";
 
@@ -133,25 +133,7 @@ function conversationWithDraft() {
 
 function renderAiChat() {
   const messages = byId("ai-chat-messages");
-  messages.replaceChildren();
-  for (const message of state.aiChat.messages) {
-    const article = document.createElement("article");
-    article.className = `ai-message ${message.role}`;
-    const heading = document.createElement("strong");
-    heading.textContent = message.role === "user" ? "Аналитик" : "SEC AI Assistant";
-    const content = document.createElement("div"); content.className = "markdown-body";
-    renderMarkdown(content, message.content);
-    article.append(heading, content);
-    if (message.attachments.length) {
-      const context = document.createElement("div"); context.className = "ai-attachments";
-      for (const item of message.attachments) {
-        const chip = document.createElement("span"); chip.textContent = `${item.type}: ${item.label}`; context.append(chip);
-      }
-      article.append(context);
-    }
-    messages.append(article);
-  }
-  if (!messages.children.length) messages.textContent = "Диалог для этой вкладки пока пуст.";
+  renderChatMessages(messages, state.aiChat.messages, { emptyText: "Диалог для этой вкладки пока пуст." });
   const pending = byId("ai-pending-context"); pending.replaceChildren();
   for (const [index, item] of state.aiChat.pendingAttachments.entries()) {
     const chip = document.createElement("span"); chip.textContent = `${item.type}: ${item.label}`;

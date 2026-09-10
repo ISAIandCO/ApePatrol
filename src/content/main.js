@@ -15,16 +15,8 @@ import { resolveKnowledgeBaseUrl } from "../siem/features/knowledge-base.js";
 import { buildEventSearchUrl, buildRelatedEventActions, resolveAiRelatedRequest, TIME_PRESETS } from "../siem/features/related-events.js";
 import { TableListTools } from "../siem/features/table-list-tools.js";
 import { buildRuleIntelligence } from "../siem/features/rule-intelligence.js";
-import { buildProcessFocusPredicate, buildProcessGraph, buildProcessRelationPredicate, buildProcessSearchPredicate, findSourceProcessNodeId, selectDirectProcessRelatives, selectProcessNeighborhood } from "../siem/process/graph.js";
-import {
-  deduplicateProcessEvents,
-  expansionRanges,
-  fetchProcessPages,
-  mergeLoadedRanges,
-  prioritizeProcessEvents,
-  runProcessRangeQueries,
-  seedProcessRange,
-} from "../siem/process/progressive.js";
+import { createProcessWorkflow } from "@isaiandco/ape-share-core/graph/workflow";
+import { buildProcessRelationPredicate, buildProcessSearchPredicate, normalizeProcessEvent } from "../siem/process/graph.js";
 import { createSiemBackgroundFetch } from "./siem-transport.js";
 import { domSettingsFingerprint, settingsImpact } from "./settings-runtime.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
@@ -114,9 +106,15 @@ async function initialize() {
         case "siem:ai-related":
           if (!settings.features.relatedEvents) return { ok: false, error: "Related events are disabled", kind: "feature-unavailable" };
           return { ok: true, ...(await fetchAiRelatedEvents(client, event, settings, message.arguments)) };
-        case "siem:process":
+        case "siem:process": {
           if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
-          return await buildProcessContext(client, event, settings, message.mode);
+          const requestId = String(message.requestId ?? "");
+          if (requestId && (!/^[a-f\d-]{8,64}$/i.test(requestId) || processQueries.has(requestId))) throw new TypeError("Invalid or duplicate process query ID");
+          const controller = new AbortController();
+          if (requestId) processQueries.set(requestId, controller);
+          try { return await buildProcessContext(client, event, settings, message.mode, controller.signal); }
+          finally { if (requestId) processQueries.delete(requestId); }
+        }
         case "siem:process:expand": {
           if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled", kind: "feature-unavailable" };
           const requestId = String(message.requestId ?? "");
@@ -227,114 +225,33 @@ async function fetchAiRelatedEvents(client, event, settings, input = {}) {
   return { relation, range, label: action.label, where: action.where, events, truncated: events.length >= limit };
 }
 
-async function buildProcessContext(client, event, settings, mode = "broad") {
-  if (mode === "step") return buildStepProcessContext(client, event, settings);
-  const host = event["event_src.host"];
-  if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
-  const where = buildProcessSearchPredicate(host);
-  const focusWhere = buildProcessFocusPredicate(event);
-  const range = seedProcessRange(event.time, settings.process.seedWindowSeconds);
-  const select = await processFields(client);
-  const fetchQuery = async (queryWhere, maxEvents) => {
-    const request = (requestScope) => fetchProcessPages(client, {
-      where: queryWhere, select, ...range, scope: requestScope,
-    }, { pageSize: settings.process.pageSize, maxEvents });
-    try {
-      return await request(processScope(settings));
-    } catch (error) {
-      if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
-      return request({});
-    }
-  };
-  const [result, focused] = await Promise.all([
-    fetchQuery(where, settings.process.maxNodes),
-    focusWhere === where
-      ? { events: [], pages: 0, limitReached: false }
-      : fetchQuery(focusWhere, Math.min(250, settings.process.maxNodes)).catch(() => ({ events: [], pages: 0, limitReached: false })),
-  ]);
-  const events = prioritizeProcessEvents(focused.events, result.events, settings.process.maxNodes);
-  const graph = buildProcessGraph(events, { ...settings.process, sourceEvent: event });
-  return {
-    ok: true,
-    graph,
+function processWorkflow(client, settings) {
+  return createProcessWorkflow({
     origin: client.origin,
-    sourceEvent: event,
-    sourceUuid: event.uuid ?? null,
-    sourceNodeId: findSourceProcessNodeId(graph, event),
-    queryMetadata: {
-      where,
-      timeFrom: range.timeFrom,
-      timeTo: range.timeTo,
-      loadedRanges: [{ from: range.timeFrom, to: range.timeTo }],
-      maxNodes: settings.process.maxNodes,
-      pageSize: settings.process.pageSize,
-      expansionStepSeconds: settings.process.expansionStepSeconds,
-      pages: result.pages + focused.pages,
-      focusedEvents: focused.events.length,
-      pendingRanges: result.limitReached ? [{ direction: "seed", ...range, offset: result.nextOffset }] : [],
-      partial: true,
-      limitReached: result.limitReached || graph.truncated,
-      searchScope: settings.searchScope.mode,
+    normalize: normalizeProcessEvent,
+    async searchPage(query) {
+      const intent = query.where;
+      const where = intent.kind === "processes" ? buildProcessSearchPredicate(intent.host)
+        : buildProcessRelationPredicate(intent.events, intent.direction);
+      const select = await processFields(client);
+      const request = scope => client.searchEvents({ ...query, where, select, scope });
+      try { return await request(processScope(settings)); }
+      catch (error) {
+        if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
+        return request({});
+      }
     },
-  };
+  }, settings);
 }
 
-async function fetchScopedProcessPages(client, settings, query, options) {
-  const request = (scope) => fetchProcessPages(client, { ...query, scope }, options);
-  try {
-    return await request(processScope(settings));
-  } catch (error) {
-    if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
-    return request({});
-  }
+async function buildProcessContext(client, event, settings, mode, signal) {
+  return processWorkflow(client, settings).load(event, mode, signal);
 }
-
-async function buildStepProcessContext(client, event, settings) {
-  const host = event["event_src.host"];
-  if (!host) return { ok: false, kind: "feature-unavailable", error: "Current event has no event_src.host" };
-  const range = seedProcessRange(event.time, 3600);
-  const select = await processFields(client);
-  const directWhere = buildProcessRelationPredicate(event, "both");
-  const direct = await fetchScopedProcessPages(client, settings, { where: directWhere, select, ...range }, {
-    pageSize: settings.process.pageSize,
-    maxEvents: Math.min(500, settings.process.maxNodes),
-  });
-  const directGraph = buildProcessGraph(direct.events, { ...settings.process, sourceEvent: event });
-  const directSourceNodeId = findSourceProcessNodeId(directGraph, event);
-  const directNeighborhood = selectProcessNeighborhood(directGraph, directSourceNodeId, 1);
-  const relationEvents = directNeighborhood.nodes.map((node) => node.event);
-  const secondWhere = buildProcessRelationPredicate(relationEvents.length ? relationEvents : [event], "both");
-  const second = await fetchScopedProcessPages(client, settings, { where: secondWhere, select, ...range }, {
-    pageSize: settings.process.pageSize,
-    maxEvents: settings.process.maxNodes,
-  });
-  const events = deduplicateProcessEvents(direct.events, second.events).slice(0, settings.process.maxNodes);
-  const completeGraph = buildProcessGraph(events, { ...settings.process, sourceEvent: event });
-  const sourceNodeId = findSourceProcessNodeId(completeGraph, event);
-  const graph = selectProcessNeighborhood(completeGraph, sourceNodeId, 2);
-  return {
-    ok: true,
-    graph,
-    origin: client.origin,
-    sourceEvent: event,
-    sourceUuid: event.uuid ?? null,
-    sourceNodeId,
-    queryMetadata: {
-      mode: "step",
-      where: secondWhere,
-      timeFrom: range.timeFrom,
-      timeTo: range.timeTo,
-      loadedRanges: [{ from: range.timeFrom, to: range.timeTo }],
-      maxNodes: settings.process.maxNodes,
-      pageSize: settings.process.pageSize,
-      expansionStepSeconds: 3600,
-      pages: direct.pages + second.pages,
-      pendingRanges: [],
-      partial: true,
-      limitReached: direct.limitReached || second.limitReached,
-      searchScope: settings.searchScope.mode,
-    },
-  };
+async function expandProcessContext(client, event, settings, message, signal) {
+  return processWorkflow(client, settings).expand(event, message, signal);
+}
+async function expandProcessNode(client, event, settings, message, signal) {
+  return processWorkflow(client, settings).expandNode(event, message, signal);
 }
 
 function processScope(settings) {
@@ -354,124 +271,5 @@ async function processFields(client) {
   }
 }
 
-async function expandProcessContext(client, currentEvent, settings, message, signal) {
-  const sourceEvent = message.sourceEvent && typeof message.sourceEvent === "object" ? message.sourceEvent : currentEvent;
-  const host = sourceEvent["event_src.host"];
-  if (!host) return { ok: false, kind: "feature-unavailable", error: "Source event has no event_src.host" };
-  const existing = deduplicateProcessEvents(message.existingEvents);
-  const nodeLimit = Math.min(10_000, Math.max(settings.process.maxNodes, Number(message.nodeLimit) || settings.process.maxNodes));
-  const previousPending = Array.isArray(message.queryMetadata?.pendingRanges) ? message.queryMetadata.pendingRanges : [];
-  const requestedRanges = message.resumeLimit && previousPending.length
-    ? previousPending.map(({ direction, timeFrom, timeTo, offset }) => ({ direction, timeFrom, timeTo, offset }))
-    : expansionRanges(message.queryMetadata, message.direction, Number(message.stepSeconds) || settings.process.expansionStepSeconds)
-      .map((range) => ({ ...range, direction: message.direction, offset: 0 }));
-  const remaining = Math.max(0, nodeLimit - existing.length);
-  const ranges = remaining ? requestedRanges : [];
-  let results = [];
-  if (remaining) {
-    const query = { where: buildProcessSearchPredicate(host), select: await processFields(client), scope: processScope(settings) };
-    const request = (requestQuery) => runProcessRangeQueries(client, ranges, requestQuery, {
-      concurrency: settings.process.queryConcurrency,
-      pageSize: settings.process.pageSize,
-      maxEvents: Math.max(1, Math.ceil(remaining / ranges.length)),
-      signal,
-    });
-    try {
-      results = await request(query);
-    } catch (error) {
-      if (settings.searchScope.mode === "default" || !["http", "unsupported", "invalid-response"].includes(error.kind)) throw error;
-      results = await request({ ...query, scope: {} });
-    }
-  }
-  const incoming = results.flatMap((result) => result.events);
-  const events = deduplicateProcessEvents(existing, incoming).slice(0, nodeLimit);
-  const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
-  const loadedRanges = mergeLoadedRanges(message.queryMetadata?.loadedRanges, ranges);
-  const nextPending = results.flatMap((result, index) => result.limitReached ? [{
-    direction: ranges[index].direction,
-    timeFrom: ranges[index].timeFrom,
-    timeTo: ranges[index].timeTo,
-    offset: result.nextOffset,
-  }] : []);
-  const pendingByRange = new Map((message.resumeLimit ? nextPending : [...previousPending, ...nextPending]).map((range) => [
-    `${range.timeFrom}\n${range.timeTo}`,
-    range,
-  ]));
-  const pendingRanges = [...pendingByRange.values()];
-  const timeFrom = loadedRanges[0]?.from ?? message.queryMetadata?.timeFrom;
-  const timeTo = loadedRanges.at(-1)?.to ?? message.queryMetadata?.timeTo;
-  const limitReached = events.length >= nodeLimit || pendingRanges.length > 0 || graph.truncated;
-  return {
-    ok: true,
-    graph,
-    origin: client.origin,
-    sourceEvent,
-    sourceUuid: sourceEvent.uuid ?? null,
-    sourceNodeId: findSourceProcessNodeId(graph, sourceEvent),
-    queryMetadata: {
-      ...message.queryMetadata,
-      where: buildProcessSearchPredicate(host),
-      timeFrom,
-      timeTo,
-      loadedRanges,
-      maxNodes: nodeLimit,
-      pageSize: settings.process.pageSize,
-      pages: Number(message.queryMetadata?.pages ?? 0) + results.reduce((total, result) => total + result.pages, 0),
-      pendingRanges,
-      partial: true,
-      limitReached,
-      lastDirection: message.direction,
-      searchScope: settings.searchScope.mode,
-    },
-  };
-}
-
-async function expandProcessNode(client, currentEvent, settings, message, signal) {
-  const sourceEvent = message.sourceEvent && typeof message.sourceEvent === "object" ? message.sourceEvent : currentEvent;
-  const nodeEvent = message.nodeEvent && typeof message.nodeEvent === "object" ? message.nodeEvent : null;
-  if (!nodeEvent?.["event_src.host"]) return { ok: false, kind: "feature-unavailable", error: "Node event has no event_src.host" };
-  const direction = ["parents", "children", "both"].includes(message.direction) ? message.direction : "both";
-  const existing = deduplicateProcessEvents(message.existingEvents);
-  const nodeLimit = Math.min(10_000, Math.max(settings.process.maxNodes, Number(message.nodeLimit) || settings.process.maxNodes));
-  const remaining = Math.max(0, nodeLimit - existing.length);
-  const range = seedProcessRange(nodeEvent.time, Number(message.stepSeconds) || 3600);
-  const where = buildProcessRelationPredicate(nodeEvent, direction);
-  const result = remaining ? await fetchScopedProcessPages(client, settings, {
-    where,
-    select: await processFields(client),
-    ...range,
-  }, { pageSize: settings.process.pageSize, maxEvents: remaining, signal }) : { events: [], pages: 0, limitReached: true };
-  const candidateEvents = deduplicateProcessEvents(existing, result.events).slice(0, nodeLimit);
-  const candidateGraph = buildProcessGraph(candidateEvents, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
-  const nodeId = findSourceProcessNodeId(candidateGraph, nodeEvent);
-  const relatedEvents = selectDirectProcessRelatives(candidateGraph, nodeId, direction).map((node) => node.event);
-  const events = deduplicateProcessEvents(existing, relatedEvents).slice(0, nodeLimit);
-  const graph = buildProcessGraph(events, { ...settings.process, maxNodes: nodeLimit, sourceEvent });
-  const loadedRanges = mergeLoadedRanges(message.queryMetadata?.loadedRanges, [range]);
-  return {
-    ok: true,
-    graph,
-    origin: client.origin,
-    sourceEvent,
-    sourceUuid: sourceEvent.uuid ?? null,
-    sourceNodeId: findSourceProcessNodeId(graph, sourceEvent),
-    queryMetadata: {
-      ...message.queryMetadata,
-      mode: "step",
-      where,
-      timeFrom: loadedRanges[0]?.from ?? range.timeFrom,
-      timeTo: loadedRanges.at(-1)?.to ?? range.timeTo,
-      loadedRanges,
-      maxNodes: nodeLimit,
-      pageSize: settings.process.pageSize,
-      pages: Number(message.queryMetadata?.pages ?? 0) + result.pages,
-      pendingRanges: [],
-      partial: true,
-      limitReached: events.length >= nodeLimit || result.limitReached || graph.truncated,
-      lastDirection: direction,
-      searchScope: settings.searchScope.mode,
-    },
-  };
-}
 
 initialize().catch((error) => console.warn(`[ApePatrol] initialization failed: ${error.message}`));

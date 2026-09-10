@@ -1,3 +1,4 @@
+import { requiredTemplateFields as requiredFields, renderTemplate } from "@isaiandco/ape-share-core/filters/templates";
 import { escapePdqlString, formatPdqlValue } from "../../shared/pdql/escape.js";
 
 export const BUILTIN_FILTERS = Object.freeze([
@@ -53,19 +54,15 @@ export const BUILTIN_FILTERS = Object.freeze([
 
 const PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_.]*)\}/g;
 
-export function requiredTemplateFields(template) {
-  return [...new Set([...String(template).matchAll(PLACEHOLDER)].map((match) => match[1]))];
-}
+export function requiredTemplateFields(template) { return requiredFields(template, PLACEHOLDER); }
 
 export function renderFilterTemplate(template, event) {
-  const missing = requiredTemplateFields(template).filter((field) => event[field] === undefined || event[field] === null || event[field] === "");
-  if (missing.length) return { ok: false, missing, query: null };
-  const query = String(template).replace(PLACEHOLDER, (match, field, offset, source) => {
-    const value = event[field];
-    const quoted = source[offset - 1] === "'" && source[offset + match.length] === "'";
-    return quoted ? escapePdqlString(value) : formatPdqlValue(value);
+  return renderTemplate(template, { pattern: PLACEHOLDER, resolve: field => event[field],
+    render: (values, match, field, offset, source) => {
+      const quoted = source[offset - 1] === "'" && source[offset + match.length] === "'";
+      return quoted ? escapePdqlString(values.get(field)) : formatPdqlValue(values.get(field));
+    },
   });
-  return { ok: true, missing: [], query };
 }
 
 export function normalizeCustomFilter(filter, index = 0) {

@@ -1,8 +1,8 @@
+import { reportLinks } from "@isaiandco/ape-share-core/ioc/report-links";
 import { mountIocActions } from "@isaiandco/ape-share-core/ioc/ui";
 import { buildEqualityPredicate } from "../../shared/pdql/builder.js";
 import { iocFromField } from "../../shared/ioc.js";
-import { classifyIp } from "../../shared/ip.js";
-import { fillUrlTemplate, parseSafeExternalUrl, sanitizeFilenamePart } from "../../shared/url.js";
+import { parseSafeExternalUrl, sanitizeFilenamePart } from "../../shared/url.js";
 import { filterAvailableEventFields } from "../api/client.js";
 import { buildEventSearchUrl } from "./related-events.js";
 import { aroundTime } from "../../shared/time.js";
@@ -317,13 +317,8 @@ export class EventFieldActions {
       linkHeading.textContent = "Открыть отчёт на сайте";
       menu.append(linkHeading);
     }
-    for (const provider of this.settings.externalProviders.filter((item) => item.enabled && ioc?.type === item.type)) {
-      if (provider.type === "ip") {
-        const category = classifyIp(String(value));
-        if (category === "invalid" || (category !== "public" && !provider.allowPrivate)) continue;
-      }
-      const url = fillUrlTemplate(provider.urlTemplate, { [provider.type]: value });
-      if (url) add(provider.name, () => browser.runtime.sendMessage({ type: "tabs:open", url: url.href }));
+    for (const link of reportLinks(ioc, this.settings.externalProviders)) {
+      add(link.provider, () => browser.runtime.sendMessage({ type: "tabs:open", url: link.url }));
     }
     if (ioc) add("Настройки IOC-провайдеров…", async () => {
       const response = await browser.runtime.sendMessage({ type: "options:open" });
