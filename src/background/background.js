@@ -180,7 +180,7 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
         if (!settings.features.aiAssistant) throw new Error("AI assistant is disabled");
         const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
         if (!endpoint || !settings.ai.model) throw new Error("AI endpoint or model is not configured");
-        return { ok: true, endpoint: endpoint.origin, preview: await prepareAiRequest(message.event, settings.ai, {
+        return { ok: true, endpoint: endpoint.href, preview: await prepareAiRequest(message.event, settings.ai, {
           selectedFields: message.selectedFields,
           conversation: message.conversation,
           contextType: message.contextType,

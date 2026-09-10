@@ -17,6 +17,7 @@ async function surface(overrides = {}) {
   const workspaces = ["a", "b"].map(id => ({ id, title: id, items: [{ ...item }], tags: [], notes: "Notes", createdAt: 1000, updatedAt: 1000, status: "open" }));
   const chats = { a: { draft: "Question", messages: [] }, b: { draft: "Other question", messages: [] } };
   const request = vi.fn(async message => {
+    if (message.type === "ai:preview") return { preview: { hash: "reviewed", serialized: "{}", warnings: [], byteLength: 2 }, endpoint: "https://ai.test" };
     if (message.type === "settings:get") return { settings: { ai: { endpoint: "https://ai.test", model: "model" } } };
     if (message.type === "workspace:list") return { workspaces };
     if (message.type === "workspace:chat:get") return { chat: chats[message.id] };
@@ -52,8 +53,8 @@ describe("shared workspace runtime", () => {
   it("saves a late AI answer in its original investigation after switching", async () => {
     let finish;
     const app = await surface({ requestAiCompletion: () => new Promise(resolve => { finish = resolve; }) });
-    app.view.state.aiPreviewHash = "reviewed";
-    app.byId("workspace-ai-run").disabled = false;
+    app.byId("workspace-ai-preview").click();
+    await vi.waitFor(() => expect(app.byId("workspace-ai-run").disabled).toBe(false));
     app.byId("workspace-ai-run").click();
     expect(finish).toBeTypeOf("function");
     await app.view.selectWorkspace("b");

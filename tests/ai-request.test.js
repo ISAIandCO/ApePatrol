@@ -33,9 +33,11 @@ describe("visible-page AI request", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await requestAiCompletion({ event, conversation, contextType: "tab", previewHash: prepared.hash, confirmed: true });
+    const result = await requestAiCompletion({ event, conversation, contextType: "tab", previewHash: prepared.hash, previewEndpoint: settings.ai.endpoint, confirmed: true });
 
     expect(result.content).toBe("Ответ");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await expect(requestAiCompletion({ event, conversation, contextType: "tab", previewHash: prepared.hash, previewEndpoint: "http://127.0.0.1:8080/other", confirmed: true })).rejects.toThrow("endpoint changed");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
