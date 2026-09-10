@@ -46,12 +46,13 @@ export class PdqlAutocompleteFeature {
         this.bindings.delete(editor);
       }
     }
-    const editor = adapter.getFilterEditor();
-    if (editor && !this.bindings.has(editor)) this.bind(editor);
+    const editors = adapter.getFilterEditors?.() ?? [adapter.getFilterEditor()];
+    for (const editor of editors) {
+      if (editor && !this.bindings.has(editor)) this.bind(editor);
+    }
   }
 
   bind(editor) {
-    this.loadItems().then(() => this.render(editor));
     const list = editor.ownerDocument.createElement("div");
     list.id = `apepatrol-pdql-completions-${++listId}`;
     list.dataset.apepatrolUi = "pdql-autocomplete";
@@ -68,26 +69,41 @@ export class PdqlAutocompleteFeature {
 
     const input = () => {
       this.render(editor);
-      this.loadItems().then(() => this.render(editor));
+      const generation = this.bindings.get(editor)?.generation;
+      this.loadItems().then(() => {
+        if (this.bindings.get(editor)?.generation === generation) this.render(editor);
+      });
     };
     const keydown = (event) => this.onKeydown(event, editor);
-    const blur = () => setTimeout(() => this.hide(editor), 0);
+    const blur = () => this.hide(editor);
+    const caretChanged = (event) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) input();
+    };
     editor.addEventListener("input", input);
     editor.addEventListener("keydown", keydown);
     editor.addEventListener("blur", blur);
+    editor.addEventListener("focus", input);
+    editor.addEventListener("click", input);
+    editor.addEventListener("keyup", caretChanged);
     this.bindings.set(editor, {
       list,
       active: -1,
+      generation: 0,
       destroy: () => {
         editor.removeEventListener("input", input);
         editor.removeEventListener("keydown", keydown);
         editor.removeEventListener("blur", blur);
+        editor.removeEventListener("focus", input);
+        editor.removeEventListener("click", input);
+        editor.removeEventListener("keyup", caretChanged);
         editor.removeAttribute("aria-autocomplete");
         editor.removeAttribute("aria-controls");
         editor.removeAttribute("aria-expanded");
         list.remove();
       },
     });
+    if (editor.matches(":focus")) input();
+    else this.loadItems();
   }
 
   render(editor) {
@@ -115,8 +131,9 @@ export class PdqlAutocompleteFeature {
       binding.list.append(option);
     }
     const rect = editor.getBoundingClientRect();
+    const { innerWidth, innerHeight } = editor.ownerDocument.defaultView;
     binding.list.style.left = `${Math.max(8, Math.min(innerWidth - 428, rect.left))}px`;
-    binding.list.style.top = `${Math.min(innerHeight - 280, rect.bottom + 3)}px`;
+    binding.list.style.top = `${Math.max(8, Math.min(innerHeight - 280, rect.bottom + 3))}px`;
     binding.list.style.display = "block";
     editor.setAttribute("aria-expanded", "true");
   }
@@ -149,8 +166,9 @@ export class PdqlAutocompleteFeature {
     const range = pdqlCompletionRange(editor.value, editor.selectionStart);
     if (!range) return;
     editor.setRangeText(completion, range.start, range.end, "end");
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
-    editor.dispatchEvent(new Event("change", { bubbles: true }));
+    const EditorEvent = editor.ownerDocument.defaultView.Event;
+    editor.dispatchEvent(new EditorEvent("input", { bubbles: true }));
+    editor.dispatchEvent(new EditorEvent("change", { bubbles: true }));
     this.hide(editor);
     editor.focus();
   }
@@ -158,6 +176,7 @@ export class PdqlAutocompleteFeature {
   hide(editor) {
     const binding = this.bindings.get(editor);
     if (!binding) return;
+    binding.generation += 1;
     binding.list.style.display = "none";
     binding.active = -1;
     editor.setAttribute("aria-expanded", "false");
@@ -168,3 +187,4 @@ export class PdqlAutocompleteFeature {
     this.bindings.clear();
   }
 }
+

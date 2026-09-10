@@ -26,6 +26,8 @@ describe("PDQL autocomplete", () => {
     await vi.waitFor(() => expect(document.querySelector("[role='option']")?.textContent).toBe("event_src.host"));
     document.querySelector("[role='option']").click();
     expect(editor.value).toBe("event_src.host");
+    await Promise.resolve();
+    expect(feature.bindings.get(editor).list.style.display).toBe("none");
     feature.unmount();
     expect(document.querySelector("[data-apepatrol-ui='pdql-autocomplete']")).toBeNull();
   });
@@ -45,6 +47,33 @@ describe("PDQL autocomplete", () => {
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     await vi.waitFor(() => expect(document.querySelector("[role='option']")?.textContent).toBe("event_src.host"));
     expect(getEventMetadata).toHaveBeenCalledTimes(2);
+    feature.unmount();
+  });
+});
+
+describe("autocomplete editor lifecycle", () => {
+  it("binds every editor and reopens suggestions on focus and caret movement", async () => {
+    document.body.innerHTML = '<textarea></textarea><textarea></textarea>';
+    const editors = [...document.querySelectorAll("textarea")];
+    const feature = new PdqlAutocompleteFeature({ getEventMetadata: vi.fn().mockResolvedValue({ fields: [{ name: "src.ip", filterable: true }] }) });
+    feature.onDomChanged({ adapter: { getFilterEditors: () => editors } });
+    await feature.loadPromise;
+    for (const editor of editors) {
+      editor.value = "src. ";
+      editor.setSelectionRange(4, 4);
+      editor.focus();
+      expect(feature.bindings.get(editor).list.style.display).toBe("block");
+      editor.blur();
+      expect(feature.bindings.get(editor).list.style.display).toBe("none");
+      editor.focus();
+      expect(feature.bindings.get(editor).list.style.display).toBe("block");
+      editor.setSelectionRange(5, 5);
+      editor.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
+      expect(feature.bindings.get(editor).list.style.display).toBe("none");
+    }
+    editors[0].remove();
+    feature.onDomChanged({ adapter: { getFilterEditors: () => [editors[1]] } });
+    expect(feature.bindings.size).toBe(1);
     feature.unmount();
   });
 });

@@ -1,3 +1,4 @@
+import { detectEventPlatform, filterSupportsPlatform, normalizeFilterPlatforms } from "@isaiandco/ape-share-core/filters/platform";
 import { requiredTemplateFields as requiredFields, renderTemplate } from "@isaiandco/ape-share-core/filters/templates";
 import { escapePdqlString, formatPdqlValue } from "../../shared/pdql/escape.js";
 
@@ -46,7 +47,7 @@ export const BUILTIN_FILTERS = Object.freeze([
   { id: "event-action", name: "То же действие события", description: "Ищет события с тем же нормализованным полем action.", template: "action = '${action}'", timeRange: "24h", enabled: true },
   { id: "event-status", name: "Тот же статус события", description: "Ищет события с таким же status у того же продукта-источника.", template: "(event_src.product = '${event_src.product}') and (status = '${status}')", timeRange: "24h", enabled: true },
   { id: "generic-category", name: "Та же общая категория", description: "Показывает события той же нормализованной category.generic.", template: "category.generic = '${category.generic}'", timeRange: "7d", enabled: true },
-  { id: "registry-key-host", name: "Ключ реестра на узле", description: "Ищет обращения к тому же ключу реестра на выбранном узле.", template: "(event_src.host = '${event_src.host}') and (object.path = '${object.path}') and (object.type = 'registry_key')", timeRange: "7d", enabled: true },
+  { id: "registry-key-host", platforms: ["windows"], name: "Ключ реестра на узле", description: "Ищет обращения к тому же ключу реестра на выбранном узле.", template: "(event_src.host = '${event_src.host}') and (object.path = '${object.path}') and (object.type = 'registry_key')", timeRange: "7d", enabled: true },
   { id: "email-sender", name: "Сообщения того же отправителя", description: "Ищет события с тем же адресом отправителя электронной почты.", template: "src.email = '${src.email}'", timeRange: "30d", enabled: true },
   { id: "email-recipient", name: "Сообщения тому же получателю", description: "Ищет события с тем же адресом получателя электронной почты.", template: "dst.email = '${dst.email}'", timeRange: "30d", enabled: true },
   { id: "source-title", name: "Тот же источник событий", description: "Ищет события от того же именованного источника event_src.title.", template: "event_src.title = '${event_src.title}'", timeRange: "24h", enabled: true },
@@ -75,7 +76,21 @@ export function normalizeCustomFilter(filter, index = 0) {
     description: String(filter.description || "Пользовательский PDQL-фильтр.").slice(0, 300),
     template: filter.template,
     requiredFields,
+    platforms: normalizeFilterPlatforms(filter.platforms),
     timeRange: ["5m", "15m", "1h", "24h", "7d", "30d"].includes(filter.timeRange) ? filter.timeRange : "15m",
     enabled: filter.enabled !== false,
   };
+}
+
+export function customFilterSupportsEvent(filter, event = {}) {
+  const values = fields => fields.flatMap(field => {
+    const value = event[field] ?? field.split(".").reduce((object, key) => object?.[key], event);
+    return Array.isArray(value) ? value : [value];
+  });
+  const platform = detectEventPlatform({
+    os: values(["event_src.os", "event_src.os.name", "event_src.os.family", "host.os.name", "host.os.family", "os.name", "os.family"]),
+    source: values(["event_src.product", "event_src.subsys", "event_src.vendor"]),
+    paths: values(["object.path", "object.process.fullpath", "subject.process.fullpath", "object.process.path", "subject.process.path"]),
+  });
+  return filterSupportsPlatform(filter, platform);
 }

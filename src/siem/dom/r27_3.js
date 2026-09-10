@@ -240,8 +240,9 @@ export class SiemDomAdapter {
     const card = this.getEventCard();
     return queryDeep(EVENT_TIME_SELECTOR, card) ?? this.getEventFieldElement("uuid") ?? card;
   }
+  getFilterEditors() { return queryAllDeep(FILTER_EDITOR_SELECTOR, this.getRoot()); }
   getFilterEditor() {
-    const editors = queryAllDeep(FILTER_EDITOR_SELECTOR, this.getRoot());
+    const editors = this.getFilterEditors();
     return editors.find((editor) => editor.matches(":focus")) ?? editors[0] ?? null;
   }
   getRuleCard() { return queryDeep("[data-testid*='correlation-rule'], [class*='correlation-rule']", this.getEventCard() ?? this.getRoot()); }
