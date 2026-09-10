@@ -1,5 +1,5 @@
 import { requestChatCompletion } from "@isaiandco/ape-share-core/ai/transport";
-import { normalizeAiToolCalls, prepareAiRequest } from "./ai-payload.js";
+import { normalizeAiResponse, prepareAiRequest } from "./ai-payload.js";
 import { loadSecrets, loadSettings } from "./storage.js";
 import { parseSafeExternalUrl } from "./url.js";
 
@@ -19,6 +19,7 @@ export async function requestAiCompletion(message) {
   if (!settings.features.aiAssistant) throw new Error("AI assistant is disabled");
   const endpoint = parseSafeExternalUrl(settings.ai.endpoint);
   if (!endpoint || !settings.ai.model || !secrets.llmApiKey) throw new Error("AI endpoint, model, or key is not configured");
+  if (message.previewEndpoint !== endpoint.href) throw new Error("AI endpoint changed; review the final payload again");
   if (!await browser.permissions.contains({ origins: [`${endpoint.origin}/*`] })) throw new Error("AI endpoint host permission is missing");
   if (!await hasAiDataPermission()) throw new Error("Firefox data-collection permission is missing");
   const prepared = await prepareAiRequest(message.event, settings.ai, {
@@ -29,8 +30,5 @@ export async function requestAiCompletion(message) {
   });
   if (!message.previewHash || message.previewHash !== prepared.hash) throw new Error("AI preview is stale; review the final payload again");
   const responseMessage = await requestChatCompletion(endpoint, prepared.serialized, { apiKey: secrets.llmApiKey });
-  const content = typeof responseMessage.content === "string" ? responseMessage.content.slice(0, 100000) : "";
-  const toolCalls = normalizeAiToolCalls(responseMessage, message.contextType);
-  if (!content && !toolCalls.length) throw new Error("Unexpected LLM response schema");
-  return { content, toolCalls, sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
+  return { ...normalizeAiResponse(responseMessage, message), sentFields: prepared.sentFields, bytes: prepared.byteLength, endpoint: endpoint.origin };
 }

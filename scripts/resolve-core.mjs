@@ -10,21 +10,21 @@ export const metadataPath = path.join(root, ".apesharecore.json");
 const repository = "https://github.com/ISAIandCO/ApeShareCore.git";
 const git = args => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const json = file => readFile(file, "utf8").then(JSON.parse);
-export function compatible(pkg, major) {
-  return pkg?.name === name && new RegExp(`^${major}\\.\\d+\\.\\d+$`).test(pkg.version);
+export function compatible(pkg, major, minimumMinor = 0) {
+  return pkg?.name === name && new RegExp(`^${major}\\.\\d+\\.\\d+$`).test(pkg.version) && Number(pkg.version.split(".")[1]) >= minimumMinor;
 }
-export function selectRevision(revisions, readPackage, major) {
+export function selectRevision(revisions, readPackage, major, minimumMinor = 0) {
   for (const sha of revisions) {
     const pkg = readPackage(sha);
-    if (compatible(pkg, major)) return { sha, version: pkg.version };
+    if (compatible(pkg, major, minimumMinor)) return { sha, version: pkg.version };
   }
-  throw new Error(`No compatible ApeShareCore ${major}.x revision found`);
+  throw new Error(`No compatible ApeShareCore ${major}.${minimumMinor}+ revision found`);
 }
 export async function installedCore() {
   const metadata = await json(metadataPath);
   const pkg = await json(path.join(root, "node_modules", name, "package.json"));
   const config = (await json(path.join(root, "package.json"))).apeShareCore;
-  if (!compatible(pkg, config.major) || pkg.version !== metadata.version || !/^[a-f0-9]{40}$/.test(metadata.sha) || !/^sha512-/.test(metadata.integrity)) throw new Error("Installed core does not match build metadata");
+  if (!compatible(pkg, config.major, config.minimumMinor) || pkg.version !== metadata.version || !/^[a-f0-9]{40}$/.test(metadata.sha) || !/^sha512-/.test(metadata.integrity)) throw new Error("Installed core does not match build metadata");
   return metadata;
 }
 export async function prepareCore() {
@@ -42,7 +42,7 @@ export async function prepareCore() {
     let archive;
     if (source) {
       const pkg = await json(path.join(source, "package.json"));
-      if (!compatible(pkg, config.major)) throw new Error("Candidate core is incompatible");
+      if (!compatible(pkg, config.major, config.minimumMinor)) throw new Error("Candidate core is incompatible");
       selected = { sha: git(["-C", source, "rev-parse", "HEAD"]), version: pkg.version };
       if (pinned && selected.sha !== pinned) throw new Error("Candidate source and APE_CORE_SHA disagree");
       archive = path.resolve(source);
@@ -53,7 +53,7 @@ export async function prepareCore() {
       const revisions = pinned ? [pinned] : git(["-C", checkout, "rev-list", "--first-parent", "HEAD"]).split("\n");
       selected = selectRevision(revisions, sha => {
         try { return JSON.parse(git(["-C", checkout, "show", `${sha}:package.json`])); } catch { return null; }
-      }, config.major);
+      }, config.major, config.minimumMinor);
       archive = `https://codeload.github.com/ISAIandCO/ApeShareCore/tar.gz/${selected.sha}`;
       try { const current = await installedCore(); if (current.sha === selected.sha && current.source === "github") return current; } catch { /* First build or npm ci removed core. */ }
     }

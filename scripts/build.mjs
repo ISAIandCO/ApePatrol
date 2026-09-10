@@ -45,6 +45,12 @@ await build({
 for (const file of ["popup.html", "popup.css", "process-graph.html", "process-graph.css", "workspace.html", "workspace.css", "options.html", "options.css", "content.css"]) {
   await cp(path.join(root, "src/static", file), path.join(outDir, file));
 }
+await cp(path.join(corePackage, "styles/process-graph.css"), path.join(outDir, "process-graph.css"));
+await writeFile(path.join(outDir, "process-graph.html"), (await readFile(path.join(corePackage, "templates/process-graph.html"), "utf8"))
+  .replaceAll("__PRODUCT__", "ApePatrol").replaceAll("__ASSET_PREFIX__", "").replace("__GRAPH_STYLE__", "process-graph.css").replace("__SCRIPTS__", '<script src="process-graph.js"></script>'));
+await cp(path.join(corePackage, "styles/workspace.css"), path.join(outDir, "workspace.css"));
+await writeFile(path.join(outDir, "workspace.html"), (await readFile(path.join(corePackage, "templates/workspace.html"), "utf8"))
+  .replaceAll("__PRODUCT__", "ApePatrol").replaceAll("__ASSET_PREFIX__", "").replace("__SCRIPTS__", '<script src="workspace.js"></script>'));
 await cp(path.join(root, "assets", "icons"), path.join(outDir, "assets", "icons"), { recursive: true });
 await cp(path.join(root, "src", "managed-schema.json"), path.join(outDir, "managed-schema.json"));
 

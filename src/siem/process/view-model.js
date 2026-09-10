@@ -1,3 +1,4 @@
+import { processFilterValues } from "./filter-values.js";
 import { processEventText } from "./filters.js";
 
 const first = (event, names) => names.map((name) => event?.[name]).find((value) => value !== undefined && value !== null && value !== "");
@@ -62,6 +63,7 @@ export function buildProcessGraphView(graph, sourceNodeId = null, sourceEvent = 
       depth: node.depth ?? 0,
       time: node.time ?? 0,
       event: node.event,
+      filterValues: processFilterValues(displayEvent),
       connectionCount,
       radius: processNodeRadius(connectionCount),
       selected: node.id === sourceNodeId,

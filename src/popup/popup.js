@@ -1,3 +1,4 @@
+import { createAiConversation } from "@isaiandco/ape-share-core/ai/conversation";
 import { setSafeText } from "../shared/dom.js";
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
@@ -6,8 +7,8 @@ import { renderFilterTemplate } from "../siem/features/custom-filters.js";
 import { loadOptionalPopupFeatures } from "./feature-loader.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../shared/ioc-batch.js";
-import { addAiAttachment, appendAiMessage, eventAiAttachment, normalizeAiChat } from "../shared/ai-chat.js";
-import { renderMarkdown } from "../shared/markdown.js";
+import { addAiAttachment, eventAiAttachment, normalizeAiChat } from "../shared/ai-chat.js";
+import { renderChatMessages } from "@isaiandco/ape-share-core/ui/chat-messages";
 import { downloadText } from "../shared/download.js";
 import { requestAiCompletion } from "../shared/ai-request.js";
 
@@ -86,11 +87,36 @@ function applyFeatureVisibility() {
   byId("rule-intelligence").hidden = !features.ruleIntelligence || !state.rule;
 }
 
+const aiDisabledControls = new Map();
+const aiConversation = createAiConversation({
+  read: () => state.aiChat, write: chat => { state.aiChat = chat; renderAiChat(); }, scope: () => state.tab?.id,
+  request: () => ({ event: state.context.event, selectedFields: selectedAiFields(), conversation: conversationWithDraft(), contextType: "tab", allowSiemTools: state.aiChat.allowSiemTools }),
+  async preview(message) {
+    const response = await browser.runtime.sendMessage({ ...message, type: "ai:preview" });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось сформировать AI payload");
+    return response;
+  },
+  complete: requestAiCompletion,
+  async persist(chat, tabId) {
+    const response = await browser.runtime.sendMessage({ type: "tab-session:save", tabId, session: { activePanel: activePanel(), aiChat: chat } });
+    if (!response?.ok) throw new Error(response?.error ?? "Не удалось сохранить AI диалог");
+  },
+  changed() {
+    byId("ai-run").disabled = aiConversation.busy || !aiConversation.reviewed;
+    for (const element of document.querySelectorAll("#ai input, #ai textarea, #ai button")) {
+      if (element.id === "ai-run") continue;
+      if (aiConversation.busy) { if (!aiDisabledControls.has(element)) aiDisabledControls.set(element, element.disabled); element.disabled = true; }
+      else if (aiDisabledControls.has(element)) { element.disabled = aiDisabledControls.get(element); aiDisabledControls.delete(element); }
+    }
+  },
+});
+
 function selectedAiFields() {
   return [...document.querySelectorAll("#ai-fields input:checked")].map((input) => input.value);
 }
 
 function invalidateAiPreview() {
+  aiConversation.invalidate();
   state.aiPreviewHash = null;
   byId("ai-run").disabled = true;
   byId("ai-preview").textContent = "";
@@ -133,25 +159,7 @@ function conversationWithDraft() {
 
 function renderAiChat() {
   const messages = byId("ai-chat-messages");
-  messages.replaceChildren();
-  for (const message of state.aiChat.messages) {
-    const article = document.createElement("article");
-    article.className = `ai-message ${message.role}`;
-    const heading = document.createElement("strong");
-    heading.textContent = message.role === "user" ? "Аналитик" : "SEC AI Assistant";
-    const content = document.createElement("div"); content.className = "markdown-body";
-    renderMarkdown(content, message.content);
-    article.append(heading, content);
-    if (message.attachments.length) {
-      const context = document.createElement("div"); context.className = "ai-attachments";
-      for (const item of message.attachments) {
-        const chip = document.createElement("span"); chip.textContent = `${item.type}: ${item.label}`; context.append(chip);
-      }
-      article.append(context);
-    }
-    messages.append(article);
-  }
-  if (!messages.children.length) messages.textContent = "Диалог для этой вкладки пока пуст.";
+  renderChatMessages(messages, state.aiChat.messages, { emptyText: "Диалог для этой вкладки пока пуст." });
   const pending = byId("ai-pending-context"); pending.replaceChildren();
   for (const [index, item] of state.aiChat.pendingAttachments.entries()) {
     const chip = document.createElement("span"); chip.textContent = `${item.type}: ${item.label}`;
@@ -242,8 +250,10 @@ async function executeTabAiTool(call) {
 }
 
 async function executeAiToolCalls() {
+  if (aiConversation.busy) return;
   const calls = [...state.aiChat.pendingToolCalls];
   if (!calls.length || !confirm(`Выполнить ${calls.length} показанных read-only запросов к текущей SIEM?`)) return;
+  invalidateAiPreview();
   for (const call of calls) state.aiChat = addAiAttachment(state.aiChat, await executeTabAiTool(call));
   state.aiChat.pendingToolCalls = [];
   state.aiChat.draft = "Используй подтверждённые результаты запросов к SIEM для продолжения анализа.";
@@ -645,15 +655,8 @@ byId("ai-promote").addEventListener("click", () => promoteAiChat().catch((error)
 byId("ai-preview-button").addEventListener("click", async () => {
   byId("ai-preview-meta").textContent = "Формирую payload локально…";
   try {
-    const response = await browser.runtime.sendMessage({
-      type: "ai:preview",
-      event: state.context.event,
-      selectedFields: selectedAiFields(),
-      conversation: conversationWithDraft(),
-      contextType: "tab",
-      allowSiemTools: state.aiChat.allowSiemTools,
-    });
-    if (!response?.ok) throw new Error(response?.error ?? "Не удалось сформировать AI payload");
+    const response = await aiConversation.preview();
+    if (!response) return;
     state.aiPreviewHash = response.preview.hash;
     byId("ai-preview").textContent = response.preview.serialized;
     const warnings = response.preview.warnings.length ? `\nПредупреждения:\n- ${response.preview.warnings.join("\n- ")}` : "\nЭвристических предупреждений нет; это не означает, что payload безопасен.";
@@ -673,30 +676,11 @@ byId("ai-run").addEventListener("click", async () => {
   if (!state.aiPreviewHash) return;
   const warning = ai.mode === "full" ? "Full mode отправит все нормализованные поля. " : "";
   if (!confirm(`${warning}Отправить в ${ai.endpoint} ровно показанный выше payload?`)) return;
-  const outbound = conversationWithDraft();
   byId("ai-preview-meta").textContent = "Ожидаю ответ настроенного AI endpoint…";
   try {
-    const result = await requestAiCompletion({
-      event: state.context.event,
-      selectedFields: selectedAiFields(),
-      conversation: outbound,
-      contextType: "tab",
-      allowSiemTools: state.aiChat.allowSiemTools,
-      previewHash: state.aiPreviewHash,
-      confirmed: true,
-    });
-    state.aiChat = appendAiMessage(state.aiChat, outbound.at(-1));
-    const toolCalls = result.toolCalls ?? [];
-    state.aiChat = appendAiMessage(state.aiChat, {
-      role: "assistant",
-      content: result.content || `Запрошены дополнительные данные SIEM: ${toolCalls.map(describeToolCall).join("; ")}`,
-      toolCalls,
-    });
-    state.aiChat.draft = "";
-    state.aiChat.pendingAttachments = [];
-    state.aiChat.pendingToolCalls = toolCalls;
-    state.aiChat.updatedAt = Date.now();
-    invalidateAiPreview(); renderAiChat(); saveTabSession();
+    await aiConversation.send({ confirmed: true });
+    invalidateAiPreview(); renderAiChat();
+
   } catch (error) {
     showError(byId("ai-preview-meta"), error);
   }
@@ -717,3 +701,5 @@ initialize().catch((error) => {
   byId("event-json").textContent = error.message;
   document.querySelectorAll("main button").forEach((button) => { button.disabled = true; });
 });
+
+window.addEventListener("pagehide", () => aiConversation.destroy(), { once: true });
