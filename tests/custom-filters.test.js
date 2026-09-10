@@ -14,3 +14,13 @@ describe("custom filter templates", () => {
     expect(BUILTIN_FILTERS.some((filter) => filter.timeRange === "30d")).toBe(true);
   });
 });
+
+it("does not offer the registry template for Unix paths or unknown platforms", async () => {
+  const { BUILTIN_FILTERS, customFilterSupportsEvent, normalizeCustomFilter } = await import("../src/siem/features/custom-filters.js");
+  const filter = normalizeCustomFilter(BUILTIN_FILTERS.find(item => item.id === "registry-key-host"));
+  expect(customFilterSupportsEvent(filter, { "object.path": "/etc/passwd", "event_src.host": "unix" })).toBe(false);
+  expect(customFilterSupportsEvent(filter, { "event_src.product": "Linux", "object.path": "HKEY_LOCAL_MACHINE\\Software" })).toBe(false);
+  expect(customFilterSupportsEvent(filter, {})).toBe(false);
+  expect(customFilterSupportsEvent(filter, { "event_src.product": "Windows" })).toBe(true);
+  expect(customFilterSupportsEvent(BUILTIN_FILTERS[0], {})).toBe(true);
+});

@@ -3,7 +3,7 @@ import { setSafeText } from "../shared/dom.js";
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { sanitizeFilenamePart } from "../shared/url.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
-import { renderFilterTemplate } from "../siem/features/custom-filters.js";
+import { customFilterSupportsEvent, renderFilterTemplate } from "../siem/features/custom-filters.js";
 import { loadOptionalPopupFeatures } from "./feature-loader.js";
 import { normalizeSettings, SYNC_STORAGE_KEY } from "../shared/settings.js";
 import { buildIocBatchJobs, collectEventIocs, IOC_BATCH_PROVIDERS } from "../shared/ioc-batch.js";
@@ -456,7 +456,7 @@ async function pinCurrent(type) {
 function renderCustomFilters() {
   const select = byId("custom-filter");
   select.replaceChildren();
-  const filters = state.settings.customFilters.filter((item) => item.enabled).map((filter) => ({ filter, rendered: renderFilterTemplate(filter.template, state.context.event) }));
+  const filters = state.settings.customFilters.filter((item) => item.enabled && customFilterSupportsEvent(item, state.context.event)).map((filter) => ({ filter, rendered: renderFilterTemplate(filter.template, state.context.event) }));
   filters.sort((a, b) => Number(b.rendered.ok) - Number(a.rendered.ok) || a.filter.name.localeCompare(b.filter.name, "ru"));
   for (const { filter, rendered } of filters) {
     const option = document.createElement("option");
@@ -468,7 +468,7 @@ function renderCustomFilters() {
   previewCustomFilter();
 }
 
-function selectedFilter() { return state.settings.customFilters.find((filter) => filter.id === byId("custom-filter").value); }
+function selectedFilter() { return state.settings.customFilters.find((filter) => filter.id === byId("custom-filter").value && customFilterSupportsEvent(filter, state.context.event)); }
 function previewCustomFilter() {
   const filter = selectedFilter();
   const rendered = filter ? renderFilterTemplate(filter.template, state.context.event) : { ok: false, missing: [] };
@@ -618,6 +618,7 @@ byId("load-lists").addEventListener("click", () => loadLists().catch((error) => 
 byId("custom-filter").addEventListener("change", previewCustomFilter);
 byId("open-filter").addEventListener("click", () => {
   const filter = selectedFilter();
+  if (!filter) return;
   const rendered = renderFilterTemplate(filter.template, state.context.event);
   if (rendered.ok) browser.runtime.sendMessage({ type: "tabs:open", url: buildEventSearchUrl(state.context.origin, rendered.query, state.context.event.time, filter.timeRange) });
 });
