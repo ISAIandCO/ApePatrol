@@ -144,3 +144,12 @@ describe("process graph", () => {
     expect(selectDirectProcessRelatives(graph, sourceId, "both").map((node) => node.event.uuid).sort()).toEqual(["child", "parent"]);
   });
 });
+
+it("keeps the selected event when another process event has the same PID", () => {
+  const source = { uuid: "selected-who", time: "2026-09-14T10:19:29Z", "event_src.host": "linux-test", "object.process.id": "339824", "object.process.parent.id": "333153", "object.process.name": "who" };
+  const other = { ...source, uuid: "previous-bash", time: "2026-09-14T10:18:00Z", "object.process.name": "bash" };
+  const graph = buildProcessGraph([other], { sourceEvent: source });
+  const selected = graph.nodes.find(node => node.id === findSourceProcessNodeId(graph, source));
+  expect(selected.event.uuid).toBe("selected-who");
+  expect(selected.event["object.process.name"]).toBe("who");
+});
