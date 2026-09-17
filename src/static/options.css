@@ -19,6 +19,14 @@ code { background: color-mix(in srgb, CanvasText 8%, Canvas); padding: 1px 4px; 
 #filter-editor details { padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
 #filter-editor summary label { display: inline-flex; gap: 8px; margin: 0; align-items: center; }
 #filter-editor input[type="checkbox"] { width: auto; }
-#filter-editor > div { max-height: 360px; overflow: auto; margin-bottom: 18px; }
+#filter-editor .builtin-filter-list { max-height: 360px; overflow: auto; margin-bottom: 18px; }
 #filter-editor > button, #save-filters { margin: 8px 8px 0 0; }
 #filter-editor pre { overflow-wrap: anywhere; }
+
+#filter-editor .user-filter-card { margin: 12px 0; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 8px; }
+#filter-editor .user-filter-card > summary { font-weight: 600; cursor: pointer; }
+#filter-editor .user-filter-card > label { display: grid; gap: 5px; margin: 12px 0; }
+#filter-editor .user-filter-card > label:has(input[type="checkbox"]) { display: flex; align-items: center; }
+#filter-editor .filter-query { min-height: 280px; resize: vertical; font: 13px/1.5 ui-monospace, monospace; tab-size: 4; white-space: pre; }
+#filter-editor .filter-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+#filter-editor .filter-error { color: #c44736; white-space: pre-wrap; }

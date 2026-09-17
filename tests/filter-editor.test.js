@@ -29,3 +29,41 @@ it("migrates legacy profile and policy filters before defaults are merged", () =
   const profile = { kind: "apepatrol-settings-profile", schemaVersion: 1, settings: legacy };
   expect(importSettingsProfile({ userFilters: [] }, profile, "merge").userFilters[0].id).toBe("my-filter");
 });
+
+it("creates and deletes filters using fields without a JSON editor", () => {
+  const root = document.createElement("div"); document.body.append(root);
+  const editor = createFilterEditor({ root, builtins: [], normalize: normalizeCustomFilter, dialect: "maxpatrol-pdql", queryModes: [{ value: "where", label: "PDQL" }] });
+  editor.set({});
+  const click = text => [...root.querySelectorAll("button")].find(item => item.textContent === text).click();
+  click("Создать фильтр");
+  const card = root.querySelector(".user-filter-card");
+  card.querySelector('[data-field="name"]').value = "Мой фильтр";
+  card.querySelector('[data-field="template"]').value = "event_src.host = '${event_src.host}'";
+  card.querySelector('[data-field="enabled"]').checked = false;
+  card.querySelector('[data-field="platform"]').value = "unix";
+  card.querySelector('[data-field="timeRange"]').value = "7d";
+  const saved = editor.read().userFilters[0];
+  expect(saved).toMatchObject({ name: "Мой фильтр", enabled: false, platforms: ["unix"], timeRange: "7d" });
+  expect(saved.id).toBeTruthy();
+  editor.set({ userFilters: [saved] });
+  expect(editor.read().userFilters).toEqual([saved]);
+  click("Удалить фильтр");
+  expect(editor.read().userFilters).toEqual([]);
+});
+
+it("preserves multiline SQL drafts and comments during editing and checking", () => {
+  const root = document.createElement("div"); document.body.append(root);
+  const normalize = item => item.template.trim() ? { ...item } : null;
+  const editor = createFilterEditor({ root, builtins: [], normalize, dialect: "test-sql", defaultMode: "sql", prepareTemplate: filter => filter.template });
+  editor.set({});
+  [...root.querySelectorAll("button")].find(item => item.textContent === "Создать фильтр").click();
+  const template = "-- комментарий\nSELECT\n    Timestamp\nFROM `events`\n";
+  root.querySelector('[data-field="template"]').value = template;
+  expect(editor.read().userFilters[0]).toMatchObject({ mode: "sql", template });
+  [...root.querySelectorAll("button")].find(item => item.textContent === "Проверить шаблон").click();
+  expect(root.querySelector('[data-field="template"]').value).toBe(template);
+  expect(root.querySelector(".user-filter-card pre").hidden).toBe(false);
+  root.querySelector('[data-field="template"]').value = "";
+  expect(() => editor.read()).toThrow();
+  expect(root.querySelector(".filter-error").textContent).toBeTruthy();
+});
