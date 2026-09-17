@@ -29,7 +29,7 @@ describe("ApePatrol storage migration", () => {
     const migrated = await loadSettings();
 
     expect(migrated.instances).toEqual(["https://siem.example"]);
-    expect(migrated.customFilters.find((filter) => filter.id === "custom")?.template).toBe("uuid = ${uuid}");
+    expect(migrated.customFilters.find((filter) => filter.id === "user:custom")?.template).toBe("uuid = ${uuid}");
     expect(migrated.externalProviders.find((provider) => provider.id === "hash")?.urlTemplate).toBe("https://example.test/${hash}");
     expect(browser.storage.local.set).toHaveBeenCalledWith(expect.objectContaining({ [SYNC_STORAGE_KEY]: migrated }));
     expect(browser.storage.sync.remove).toHaveBeenCalledWith(LEGACY_SYNC_STORAGE_KEY);

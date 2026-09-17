@@ -42,3 +42,19 @@ describe("settings schema", () => {
     expect(normalizeSettings({ schemaVersion: 7, process: { expansionStepSeconds: 3600 } }).process.expansionStepSeconds).toBe(3600);
   });
 });
+
+describe("separate filter catalogs", () => {
+  it("preserves modified built-ins as user copies across repeated normalization", () => {
+    const builtin = DEFAULT_SETTINGS.customFilters[0];
+    const edited = { ...builtin, template: "event_src.host = 'fixed'" };
+    const migrated = normalizeSettings({ customFilters: [edited] });
+    expect(migrated.userFilters[0].template).toBe(edited.template);
+    expect(migrated.customFilters.find(item => item.id === builtin.id).enabled).toBe(false);
+    expect(normalizeSettings(migrated).userFilters).toEqual(migrated.userFilters);
+    expect(normalizeSettings(migrated).customFilters.filter(item => item.source === "user")).toHaveLength(1);
+  });
+  it("accepts static PDQL and rejects SQL mode without discarding the catalog", () => {
+    expect(normalizeSettings({ userFilters: [{ id: "fixed", template: "action = 'login'" }] }).userFilters).toHaveLength(1);
+    expect(() => normalizeSettings({ userFilters: [{ id: "sql", mode: "sql", template: "SELECT * FROM events" }] })).toThrow();
+  });
+});

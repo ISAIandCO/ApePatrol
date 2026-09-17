@@ -458,12 +458,13 @@ function renderCustomFilters() {
   select.replaceChildren();
   const filters = state.settings.customFilters.filter((item) => item.enabled && customFilterSupportsEvent(item, state.context.event)).map((filter) => ({ filter, rendered: renderFilterTemplate(filter.template, state.context.event) }));
   filters.sort((a, b) => Number(b.rendered.ok) - Number(a.rendered.ok) || a.filter.name.localeCompare(b.filter.name, "ru"));
+  const groups = new Map([["builtin", "Встроенные"], ["user", "Пользовательские"]].map(([key, label]) => { const group = document.createElement("optgroup"); group.label = label; select.append(group); return [key, group]; }));
   for (const { filter, rendered } of filters) {
     const option = document.createElement("option");
     option.value = filter.id;
     option.disabled = !rendered.ok;
     option.textContent = `${filter.name}${rendered.ok ? "" : ` — нет полей: ${rendered.missing.join(", ")}`}`;
-    select.append(option);
+    groups.get(filter.source || "builtin").append(option);
   }
   previewCustomFilter();
 }
