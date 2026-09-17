@@ -24,7 +24,8 @@ const SETTING_PATHS = Object.freeze({
   "ai-selected": "ai.selectedFields", "ai-allow": "ai.allowFields", "ai-deny": "ai.denyFields", "debug-logging": "debugLogging",
 });
 
-const filterEditor = createFilterEditor({ root: byId("filter-editor"), builtins: BUILTIN_FILTERS, normalize: normalizeCustomFilter, dialect: "maxpatrol-pdql", onStatus: setStatus });
+const filterEditor = createFilterEditor({ root: byId("filter-editor"), builtins: BUILTIN_FILTERS, normalize: normalizeCustomFilter, dialect: "maxpatrol-pdql", onStatus: setStatus, queryModes: [{ value: "where", label: "Условие PDQL" }],
+  queryHint: "Условие поиска MaxPatrol (PDQL). Подстановка поля события: ${event_src.host}. SQL KUMA здесь не используется." });
 
 function isManagedPath(path) { return state.managed.lockedPaths.some((locked) => path === locked || path.startsWith(`${locked}.`)); }
 
