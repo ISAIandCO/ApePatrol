@@ -29,8 +29,15 @@ export async function loadSettings() {
     browser.storage.sync.get([SYNC_STORAGE_KEY, LEGACY_SYNC_STORAGE_KEY, "options", MANAGED_OVERRIDE_PATHS_KEY]),
   ]);
   const overridePaths = local[MANAGED_OVERRIDE_PATHS_KEY] ?? stored[MANAGED_OVERRIDE_PATHS_KEY];
-  if (local[SYNC_STORAGE_KEY]) return (await resolveSettings(local[SYNC_STORAGE_KEY], overridePaths)).settings;
+  if (local[SYNC_STORAGE_KEY]) {
+    if (local[SYNC_STORAGE_KEY].userFilters === undefined) {
+      local[SYNC_STORAGE_KEY] = normalizeSettings(local[SYNC_STORAGE_KEY]);
+      await browser.storage.local.set({ [SYNC_STORAGE_KEY]: local[SYNC_STORAGE_KEY] });
+    }
+    return (await resolveSettings(local[SYNC_STORAGE_KEY], overridePaths)).settings;
+  }
   if (stored[SYNC_STORAGE_KEY]) {
+    stored[SYNC_STORAGE_KEY] = normalizeSettings(stored[SYNC_STORAGE_KEY]);
     await Promise.all([
       browser.storage.local.set({ [SYNC_STORAGE_KEY]: stored[SYNC_STORAGE_KEY], [MANAGED_OVERRIDE_PATHS_KEY]: overridePaths ?? [] }),
       browser.storage.sync.remove([SYNC_STORAGE_KEY, MANAGED_OVERRIDE_PATHS_KEY]),

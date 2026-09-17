@@ -1,3 +1,4 @@
+import { composeFilterCatalog, splitLegacyFilters, normalizeUserFilters } from "@isaiandco/ape-share-core/filters/catalog";
 import { BUILTIN_PROVIDERS } from "@isaiandco/ape-share-core/ioc/report-links";
 import { IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/providers";
 import { AI_CHAT_MAX_BYTES } from "@isaiandco/ape-share-core/ai/chat";
@@ -50,6 +51,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   searchScope: { mode: "default", searchSources: [], localSources: [], groupIds: [] },
   externalProviders: BUILTIN_PROVIDERS,
   customFilters: BUILTIN_FILTERS,
+  userFilters: [],
+  disabledBuiltinFilterIds: [],
   fieldAliases: {
     default: {
       "subject.process.cmdline": "process command line",
@@ -115,13 +118,12 @@ export function normalizeSettings(input) {
     ...BUILTIN_PROVIDERS.map((provider) => normalizeProvider({ ...provider, enabled: providerById.get(provider.id)?.enabled ?? provider.enabled })),
     ...inputProviders.filter((provider) => !builtinProviderIds.has(provider.id)),
   ];
-  const inputFilters = Array.isArray(input.customFilters) ? input.customFilters.map(normalizeCustomFilter).filter(Boolean) : [];
-  const inputById = new Map(inputFilters.map((filter) => [filter.id, filter]));
-  const builtinIds = new Set(BUILTIN_FILTERS.map((filter) => filter.id));
-  const customFilters = [
-    ...BUILTIN_FILTERS.map((filter) => normalizeCustomFilter({ ...filter, enabled: inputById.get(filter.id)?.enabled ?? filter.enabled })),
-    ...inputFilters.filter((filter) => !builtinIds.has(filter.id)),
-  ];
+  const filterSettings = input.userFilters === undefined
+    ? splitLegacyFilters(Array.isArray(input.customFilters) ? input.customFilters : [], BUILTIN_FILTERS)
+    : input;
+  const userFilters = normalizeUserFilters(filterSettings.userFilters, normalizeCustomFilter);
+  const disabledBuiltinFilterIds = Array.isArray(filterSettings.disabledBuiltinFilterIds) ? filterSettings.disabledBuiltinFilterIds.filter(id => typeof id === "string") : [];
+  const customFilters = composeFilterCatalog(BUILTIN_FILTERS.map(normalizeCustomFilter), userFilters, disabledBuiltinFilterIds);
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
@@ -145,7 +147,7 @@ export function normalizeSettings(input) {
       groupIds: Array.isArray(input.searchScope?.groupIds) ? input.searchScope.groupIds.map(String) : [],
     },
     externalProviders: providers,
-    customFilters,
+    customFilters, userFilters, disabledBuiltinFilterIds,
     fieldAliases,
     ai: {
       endpoint: parseSafeExternalUrl(input.ai?.endpoint)?.href ?? "",

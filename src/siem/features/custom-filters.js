@@ -69,7 +69,7 @@ export function renderFilterTemplate(template, event) {
 export function normalizeCustomFilter(filter, index = 0) {
   if (!filter || typeof filter !== "object" || typeof filter.template !== "string") return null;
   const requiredFields = requiredTemplateFields(filter.template);
-  if (!requiredFields.length || filter.template.length > 4000) return null;
+  if (!filter.template.trim() || filter.template.length > 4000 || (filter.mode && filter.mode !== "where") || (filter.template.match(/\$\{/g) || []).length !== [...filter.template.matchAll(PLACEHOLDER)].length) return null;
   return {
     id: String(filter.id || `filter-${index}`).replace(/[^a-z0-9_-]/gi, "-").slice(0, 64),
     name: String(filter.name || `Filter ${index + 1}`).slice(0, 120),

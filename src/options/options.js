@@ -1,3 +1,5 @@
+import { createFilterEditor } from "@isaiandco/ape-share-core/ui/filter-editor";
+import { BUILTIN_FILTERS, normalizeCustomFilter } from "../siem/features/custom-filters.js";
 import { IOC_API_PROVIDERS } from "@isaiandco/ape-share-core/ioc/providers";
 import { DEFAULT_SETTINGS, normalizeProvider } from "../shared/settings.js";
 import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/url.js";
@@ -14,7 +16,7 @@ const SETTING_PATHS = Object.freeze({
   "max-nodes": "process.maxNodes", "max-depth": "process.maxDepth", "process-seed-window": "process.seedWindowSeconds",
   "process-expansion-step": "process.expansionStepSeconds", "process-page-size": "process.pageSize", "process-query-concurrency": "process.queryConcurrency",
   "search-mode": "searchScope.mode", "search-sources": "searchScope.searchSources", "local-sources": "searchScope.localSources", "group-ids": "searchScope.groupIds",
-  providers: "externalProviders", "custom-filters": "customFilters", "field-aliases": "fieldAliases",
+  providers: "externalProviders", "filter-editor": "userFilters", "save-filters": "userFilters", "field-aliases": "fieldAliases",
   "batch-concurrency": "iocBatch.concurrency", "batch-retries": "iocBatch.maxRetries",
   "batch-ttl-virustotal": "iocBatch.cacheTtlMinutes.virustotal", "batch-ttl-abuseipdb": "iocBatch.cacheTtlMinutes.abuseipdb",
   "batch-ttl-opentip": "iocBatch.cacheTtlMinutes.opentip", "batch-ttl-threatfox": "iocBatch.cacheTtlMinutes.threatfox",
@@ -22,11 +24,15 @@ const SETTING_PATHS = Object.freeze({
   "ai-selected": "ai.selectedFields", "ai-allow": "ai.allowFields", "ai-deny": "ai.denyFields", "debug-logging": "debugLogging",
 });
 
+const filterEditor = createFilterEditor({ root: byId("filter-editor"), builtins: BUILTIN_FILTERS, normalize: normalizeCustomFilter, dialect: "maxpatrol-pdql", onStatus: setStatus });
+
 function isManagedPath(path) { return state.managed.lockedPaths.some((locked) => path === locked || path.startsWith(`${locked}.`)); }
 
 function applyManagedLocks() {
   for (const name of featureIds) byId(`feature-${name}`).disabled = isManagedPath(`features.${name}`);
   for (const [id, path] of Object.entries(SETTING_PATHS)) if (byId(id)) byId(id).disabled = isManagedPath(path);
+  const filterLocked = isManagedPath("userFilters") || isManagedPath("disabledBuiltinFilterIds") || isManagedPath("customFilters");
+  document.querySelectorAll("#filter-editor input, #filter-editor textarea, #filter-editor button, #save-filters").forEach(node => { node.disabled = filterLocked; });
   document.querySelectorAll("#instances button").forEach((button) => { button.disabled = isManagedPath("instances"); });
   byId("managed-status").textContent = state.managed.active
     ? `Managed policy active. Locked: ${state.managed.lockedPaths.join(", ") || "none (defaults only)"}.`
@@ -76,7 +82,7 @@ function renderSettings() {
   byId("local-sources").value = state.settings.searchScope.localSources.join("\n");
   byId("group-ids").value = state.settings.searchScope.groupIds.join("\n");
   byId("providers").value = JSON.stringify(state.settings.externalProviders, null, 2);
-  byId("custom-filters").value = JSON.stringify(state.settings.customFilters, null, 2);
+  filterEditor.set(state.settings);
   byId("field-aliases").value = JSON.stringify(state.settings.fieldAliases, null, 2);
   byId("ai-endpoint").value = state.settings.ai.endpoint;
   byId("ai-model").value = state.settings.ai.model;
@@ -168,10 +174,7 @@ function collectSettings() {
   if (!Array.isArray(parsedProviders)) throw new Error("External providers must be a JSON array");
   settings.externalProviders = parsedProviders.map(normalizeProvider).filter(Boolean);
   if (settings.externalProviders.length !== parsedProviders.length) throw new Error("One or more external providers has an unsafe URL or invalid type");
-  let parsedFilters;
-  try { parsedFilters = JSON.parse(byId("custom-filters").value || "[]"); } catch { throw new Error("Custom filters JSON is invalid"); }
-  if (!Array.isArray(parsedFilters)) throw new Error("Custom filters must be a JSON array");
-  settings.customFilters = parsedFilters;
+  Object.assign(settings, filterEditor.read());
   try { settings.fieldAliases = JSON.parse(byId("field-aliases").value || "{}"); } catch { throw new Error("Field aliases JSON is invalid"); }
   settings.ai = {
     endpoint: byId("ai-endpoint").value.trim(), model: byId("ai-model").value.trim(), mode: byId("ai-mode").value,
@@ -264,3 +267,11 @@ Promise.all([
   state.permissionStatus = permissionResponse;
   renderSettings();
 }).catch((error) => setStatus(error.message, true));
+
+byId("save-filters").addEventListener("click", async () => {
+  try {
+    const response = await browser.runtime.sendMessage({ type: "settings:save", settings: { ...state.settings, ...filterEditor.read() } });
+    if (!response.ok) throw new Error(response.error);
+    state.settings = response.settings; filterEditor.set(state.settings); setStatus("Фильтры сохранены.");
+  } catch (error) { setStatus(error.message, true); }
+});
