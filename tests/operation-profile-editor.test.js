@@ -1,0 +1,21 @@
+import { it, expect, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
+import { createOperationProfileEditor } from '@isaiandco/ape-share-core/ui/operation-profile-editor';
+import { DEFAULT_OPERATION_PROFILES } from '../src/siem/process/operations.js';
+it('edits profiles in collapsible fields, saves, validates and resets without silently writing', async () => {
+  const dom = new JSDOM('<main></main>');
+  const root = dom.window.document.querySelector('main'); const save = vi.fn(async () => {}), status = vi.fn();
+  const editor = createOperationProfileEditor({ root, defaults: DEFAULT_OPERATION_PROFILES, save, status });
+  editor.set(undefined);
+  expect(root.querySelectorAll('details')).toHaveLength(6);
+  root.querySelector('[data-operation-field="pid"]').value = 'datafield1';
+  expect(editor.get().profiles[0].pid).toBe('datafield1');
+  const click = text => [...root.querySelectorAll('button')].find(button => button.textContent === text).click();
+  click('Сохранить профили операций'); await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].profiles[0].pid).toBe('datafield1');
+  root.querySelector('[data-operation-field="pid"]').value = 'bad;field';
+  click('Сохранить профили операций'); expect(save).toHaveBeenCalledTimes(1);
+  expect(status).toHaveBeenLastCalledWith(expect.stringContaining('недопустимое'), true);
+  click('Сбросить к рекомендованным'); expect(editor.get().profiles[0].pid).toBe('subject.process.id');
+  expect(save).toHaveBeenCalledTimes(1); dom.window.close();
+});

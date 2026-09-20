@@ -1,0 +1,46 @@
+import { detectEventPlatform } from "@isaiandco/ape-share-core/filters/platform";
+import { searchOperationPage } from '@isaiandco/ape-share-core/graph/operation-search';
+import { migrateOperationProfiles } from '@isaiandco/ape-share-core/settings/operation-profiles';
+import { andPredicates, orPredicates, buildEqualityPredicate, buildInPredicate } from '../../shared/pdql/builder.js';
+import { normalizeProcessEvent } from './graph.js';
+import { parseSiemTime } from '../../shared/time.js';
+export const DEFAULT_OPERATION_PROFILES = [
+  ['files', '11, 2, 15, 23, 26', 'object.fullpath'], ['network', '3', 'dst.ip'],
+  ['dns', '22', 'object.name'], ['registry', '12, 13, 14', 'object.fullpath'],
+  ['access', '8, 10', 'object.process.name'], ['modules', '7', 'object.fullpath'],
+].map(([category, eventValues, target]) => ({
+  id: `sysmon-${category}`, name: `Sysmon: ${category}`, category, platform: 'windows', enabled: false,
+  sourceField: 'event_src.title', sourceValues: 'sysmon', eventField: 'msgid', eventValues,
+  host: 'event_src.host', pid: 'subject.process.id', guid: 'subject.process.guid', target,
+  targetPort: category === 'network' ? 'dst.port' : '', targetPid: category === 'access' ? 'object.process.id' : '',
+  protocol: category === 'network' ? 'protocol' : '', recordId: 'uuid', time: 'time',
+}));
+export function processOperationIdentity(event) {
+  const fact = normalizeProcessEvent(event);
+  const pid = fact.references.find(ref => ref.kind === 'pid')?.value;
+  const guid = fact.references.find(ref => ref.kind === 'guid')?.value;
+  const detected = detectEventPlatform({ os: ['event_src.os', 'event_src.os.name', 'host.os.name'].map(field => event[field]),
+    source: ['event_src.product', 'event_src.subsys', 'event_src.vendor'].map(field => event[field]),
+    paths: ['object.process.path', 'subject.process.path', 'object.process.fullpath', 'subject.process.fullpath', 'object.path'].map(field => event[field]) });
+  return { host: fact.host, pid, guid, time: fact.time,
+    platform: detected !== 'unknown' ? detected : /execve/i.test(String(event.msgid)) ? 'unix' : String(event.msgid) === '4688' ? 'windows' : 'unknown' };
+}
+export async function searchMpOperations(input, { client, profiles: saved, scope = {} }) {
+  const profiles = migrateOperationProfiles(saved, DEFAULT_OPERATION_PROFILES).profiles;
+  return searchOperationPage({ ...input, profiles,
+    dialect: { equal: buildEqualityPredicate, in: buildInPredicate, and: values => andPredicates(values),
+      factual: 'correlation_name = null',
+      guid: (field, value) => orPredicates([...new Set([value, value.toUpperCase(), `{${value}}`, `{${value.toUpperCase()}}`])].map(guid => buildEqualityPredicate(field, guid))),
+      pid: (field, value) => buildEqualityPredicate(field, /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : value) },
+    isFact: event => !event.correlation_name,
+    read: (event, field) => event[field] ?? '', parseTime: value => parseSiemTime(value)?.valueOf() ?? NaN,
+    async fetch({ where, profile, offset, limit, from, to }) {
+      const select = [...new Set(['uuid', 'time', 'correlation_name', ...['sourceField', 'eventField', 'operationField', 'host', 'pid', 'guid', 'target', 'targetPort', 'targetPid', 'protocol', 'recordId', 'time'].map(key => profile[key]).filter(Boolean)])];
+      const response = await client.searchEvents({ where, select, offset, limit, timeFrom: new Date(from).toISOString(), timeTo: new Date(to).toISOString(), scope,
+        orderBy: [{ field: profile.time, sortOrder: 'ascending' }, { field: profile.recordId, sortOrder: 'ascending' }] });
+      const events = Array.isArray(response) ? response : response?.events;
+      if (!Array.isArray(events)) throw new Error('MP SIEM вернула неизвестный формат событий');
+      return events;
+    },
+  });
+}

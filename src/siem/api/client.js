@@ -177,11 +177,11 @@ export class SiemApiClient {
     return this.cached("eventMetadata", 30 * 60_000, () => this.request("/api/events/v2/events_metadata", options));
   }
 
-  searchEvents({ where, select, timeFrom, timeTo, limit = 1000, offset = 0, order = "ascending", scope = {}, signal }) {
+  searchEvents({ where, select, timeFrom, timeTo, limit = 1000, offset = 0, order = "ascending", orderBy, scope = {}, signal }) {
     const filter = {
       select: [...new Set(select)],
       where,
-      orderBy: [{ field: "time", sortOrder: order }],
+      orderBy: orderBy ?? [{ field: "time", sortOrder: order }],
       groupBy: [],
       aggregateBy: [],
       distributeBy: [],

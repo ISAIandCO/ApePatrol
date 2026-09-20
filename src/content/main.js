@@ -22,8 +22,11 @@ import { domSettingsFingerprint, settingsImpact } from "./settings-runtime.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 import { aroundTime } from "../shared/time.js";
 
+import { searchMpOperations, DEFAULT_OPERATION_PROFILES } from "../siem/process/operations.js";
+import { migrateOperationProfiles } from "@isaiandco/ape-share-core/settings/operation-profiles";
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
+  "event_src.product", "event_src.os", "object.process.fullpath", "subject.process.fullpath",
   "object.process.id", "object.process.parent.id", "object.process.guid", "object.process.parent.guid",
   "subject.process.id", "subject.process.parent.id", "subject.process.guid", "subject.process.parent.guid",
   "object.process.name", "object.process.parent.name", "object.process.cmdline", "subject.process.name", "subject.process.cmdline",
@@ -139,6 +142,10 @@ async function initialize() {
             processQueries.delete(requestId);
           }
         }
+        case "siem:process:operations": {
+          if (!settings.features.processTree) return { ok: false, error: "Process graph is disabled" };
+          return { ok: true, page: await searchMpOperations(message.input, { client, profiles: settings.operationProfiles, scope: processScope(settings) }) };
+        }
         case "siem:process:cancel": {
           const controller = processQueries.get(String(message.requestId ?? ""));
           if (controller) controller.abort(new DOMException("Process query cancelled", "AbortError"));
@@ -245,13 +252,13 @@ function processWorkflow(client, settings) {
 }
 
 async function buildProcessContext(client, event, settings, mode, signal) {
-  return processWorkflow(client, settings).load(event, mode, signal);
+  return { ...(await processWorkflow(client, settings).load(event, mode, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
 }
 async function expandProcessContext(client, event, settings, message, signal) {
-  return processWorkflow(client, settings).expand(event, message, signal);
+  return { ...(await processWorkflow(client, settings).expand(event, message, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
 }
 async function expandProcessNode(client, event, settings, message, signal) {
-  return processWorkflow(client, settings).expandNode(event, message, signal);
+  return { ...(await processWorkflow(client, settings).expandNode(event, message, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
 }
 
 function processScope(settings) {

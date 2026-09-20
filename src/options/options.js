@@ -6,6 +6,8 @@ import { normalizeOrigin, originPattern, parseSafeExternalUrl } from "../shared/
 import { exportSettingsProfile, importSettingsProfile } from "../shared/profiles.js";
 import { downloadText } from "../shared/download.js";
 
+import { createOperationProfileEditor } from "@isaiandco/ape-share-core/ui/operation-profile-editor";
+import { DEFAULT_OPERATION_PROFILES } from "../siem/process/operations.js";
 const state = { settings: structuredClone(DEFAULT_SETTINGS), managed: { active: false, lockedPaths: [] }, secretStatus: {}, permissionStatus: { dataCollection: [], endpointAccess: {} } };
 const IOC_API_ORIGINS = Object.freeze(Object.fromEntries(Object.entries(IOC_API_PROVIDERS).map(([id, provider]) => [id, provider.origin])));
 const byId = (id) => document.getElementById(id);
@@ -24,6 +26,12 @@ const SETTING_PATHS = Object.freeze({
   "ai-selected": "ai.selectedFields", "ai-allow": "ai.allowFields", "ai-deny": "ai.denyFields", "debug-logging": "debugLogging",
 });
 
+const operationEditor = createOperationProfileEditor({ root: byId("operation-profiles"), defaults: DEFAULT_OPERATION_PROFILES, status: setStatus,
+  async save(operationProfiles) {
+    const response = await browser.runtime.sendMessage({ type: "settings:save", settings: { ...state.settings, operationProfiles } });
+    if (!response?.ok) throw new Error(response?.error || "Не удалось сохранить профили");
+    state.settings = response.settings;
+  } });
 const filterEditor = createFilterEditor({ root: byId("filter-editor"), builtins: BUILTIN_FILTERS, normalize: normalizeCustomFilter, dialect: "maxpatrol-pdql", onStatus: setStatus, queryModes: [{ value: "where", label: "Условие PDQL" }],
   queryHint: "Условие поиска MaxPatrol (PDQL). Подстановка поля события: ${event_src.host}. SQL KUMA здесь не используется." });
 
@@ -84,6 +92,7 @@ function renderSettings() {
   byId("group-ids").value = state.settings.searchScope.groupIds.join("\n");
   byId("providers").value = JSON.stringify(state.settings.externalProviders, null, 2);
   filterEditor.set(state.settings);
+  operationEditor.set(state.settings.operationProfiles);
   byId("field-aliases").value = JSON.stringify(state.settings.fieldAliases, null, 2);
   byId("ai-endpoint").value = state.settings.ai.endpoint;
   byId("ai-model").value = state.settings.ai.model;
@@ -176,6 +185,7 @@ function collectSettings() {
   settings.externalProviders = parsedProviders.map(normalizeProvider).filter(Boolean);
   if (settings.externalProviders.length !== parsedProviders.length) throw new Error("One or more external providers has an unsafe URL or invalid type");
   Object.assign(settings, filterEditor.read());
+  settings.operationProfiles = operationEditor.get();
   try { settings.fieldAliases = JSON.parse(byId("field-aliases").value || "{}"); } catch { throw new Error("Field aliases JSON is invalid"); }
   settings.ai = {
     endpoint: byId("ai-endpoint").value.trim(), model: byId("ai-model").value.trim(), mode: byId("ai-mode").value,
