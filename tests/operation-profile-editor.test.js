@@ -7,7 +7,7 @@ it('edits profiles in collapsible fields, saves, validates and resets without si
   const root = dom.window.document.querySelector('main'); const save = vi.fn(async () => {}), status = vi.fn();
   const editor = createOperationProfileEditor({ root, defaults: DEFAULT_OPERATION_PROFILES, save, status });
   editor.set(undefined);
-  expect(root.querySelectorAll('details')).toHaveLength(6);
+  expect(root.querySelectorAll('details')).toHaveLength(DEFAULT_OPERATION_PROFILES.length);
   root.querySelector('[data-operation-field="pid"]').value = 'datafield1';
   expect(editor.get().profiles[0].pid).toBe('datafield1');
   const click = text => [...root.querySelectorAll('button')].find(button => button.textContent === text).click();
@@ -18,4 +18,21 @@ it('edits profiles in collapsible fields, saves, validates and resets without si
   expect(status).toHaveBeenLastCalledWith(expect.stringContaining('недопустимое'), true);
   click('Сбросить к рекомендованным'); expect(editor.get().profiles[0].pid).toBe('subject.process.id');
   expect(save).toHaveBeenCalledTimes(1); dom.window.close();
+});
+
+it('adds new recommendations explicitly without overwriting saved profiles, and preserves classifier validation after editing', () => {
+  const dom = new JSDOM('<main></main>'); const root = dom.window.document.querySelector('main');
+  const editor = createOperationProfileEditor({ root, defaults: DEFAULT_OPERATION_PROFILES, save: async () => {} });
+  editor.set([{ ...DEFAULT_OPERATION_PROFILES[0], pid: 'customActor' }]);
+  expect(editor.get().profiles).toHaveLength(1);
+  const add = [...root.querySelectorAll('button')].find(button => button.textContent === 'Добавить недостающие рекомендуемые профили');
+  add.click(); add.click();
+  expect(editor.get().profiles).toHaveLength(DEFAULT_OPERATION_PROFILES.length);
+  expect(editor.get().profiles[0].pid).toBe('customActor');
+  const card = [...root.querySelectorAll('details')].find(item => item.querySelector('summary').textContent.includes('Linux auditd: connect'));
+  card.querySelector('input[type="checkbox"]').checked = true;
+  expect(() => editor.get()).toThrow('укажите поле');
+  card.querySelector('[data-operation-field="operationField"]').value = 'datafield1';
+  expect(editor.get().profiles.find(item => item.id === 'auditd-network').selectorRequired).toBe(true);
+  dom.window.close();
 });

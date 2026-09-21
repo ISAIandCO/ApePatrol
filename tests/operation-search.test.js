@@ -40,3 +40,25 @@ describe('MP operation adapter', () => {
     await expect(searchMpOperations({ process, category: 'files' }, { client, profiles: [profile] })).rejects.toThrow('HTTP 500');
   });
 });
+
+it('Windows Security and Linux catalog profiles use verified custom classifier fields in PDQL and parsing', async () => {
+  for (const preset of DEFAULT_OPERATION_PROFILES.filter(item => !item.id.startsWith('sysmon-'))) {
+    const configured = { ...preset, enabled: true, sourceValues: 'synthetic-source', operationField: preset.selectorRequired ? 'datafield1' : '', target: 'object.name' };
+    const record = { uuid: `fixture-${preset.id}`, time: new Date(from + 1000).toISOString(), 'event_src.host': process.host, 'event_src.title': 'synthetic-source', msgid: preset.eventValues.split(',')[0].trim(), 'subject.process.id': 42, 'object.process.id': 999, 'object.name': preset.category === 'access' ? '73' : '/example/target', datafield1: preset.operationValues?.split(',')[0].trim(), action: 'read', status: 'success' };
+    const client = { searchEvents: vi.fn(async () => [record]) };
+    const result = await searchMpOperations({ process: { ...process, platform: preset.platform }, category: preset.category }, { client, profiles: [configured] });
+    const query = client.searchEvents.mock.calls[0][0];
+    expect(query.where).toContain('subject.process.id = 42'); expect(query.where).not.toContain('object.process.id =');
+    if (preset.selectorRequired) expect(query.where).toContain('datafield1 in');
+    expect(query.select).toContain('action'); expect(query.select).toContain('status');
+    expect(query.limit).toBe(25); expect(result.facts).toHaveLength(1);
+    expect(result.facts[0].operation).toMatch(/read · success$/);
+  }
+});
+
+it('queries custom text PIDs as padded hex strings rather than numeric fields', async () => {
+  const client = { searchEvents: vi.fn(async () => []) };
+  await searchMpOperations({ process, category: 'files' }, { client, profiles: [{ ...profile, pid: 'datafield1', pidFormat: 'text' }] });
+  expect(client.searchEvents.mock.calls[0][0].where).toContain('0x000000000000002a');
+  expect(client.searchEvents.mock.calls[0][0].where).toContain('datafield1 in');
+});

@@ -1,10 +1,11 @@
+import { AUDIT_OPERATION_RECIPES } from '@isaiandco/ape-share-core/settings/operation-recipes';
 import { detectEventPlatform } from "@isaiandco/ape-share-core/filters/platform";
-import { searchOperationPage } from '@isaiandco/ape-share-core/graph/operation-search';
+import { searchOperationPage, pidTextValues } from '@isaiandco/ape-share-core/graph/operation-search';
 import { migrateOperationProfiles } from '@isaiandco/ape-share-core/settings/operation-profiles';
 import { andPredicates, orPredicates, buildEqualityPredicate, buildInPredicate } from '../../shared/pdql/builder.js';
 import { normalizeProcessEvent } from './graph.js';
 import { parseSiemTime } from '../../shared/time.js';
-export const DEFAULT_OPERATION_PROFILES = [
+const SYSMON_OPERATION_PROFILES = [
   ['files', '11, 2, 15, 23, 26', 'object.fullpath'], ['network', '3', 'dst.ip'],
   ['dns', '22', 'object.name'], ['registry', '12, 13, 14', 'object.fullpath'],
   ['access', '8, 10', 'object.process.name'], ['modules', '7', 'object.fullpath'],
@@ -15,6 +16,17 @@ export const DEFAULT_OPERATION_PROFILES = [
   targetPort: category === 'network' ? 'dst.port' : '', targetPid: category === 'access' ? 'object.process.id' : '',
   protocol: category === 'network' ? 'protocol' : '', recordId: 'uuid', time: 'time',
 }));
+export const DEFAULT_OPERATION_PROFILES = [...SYSMON_OPERATION_PROFILES, ...AUDIT_OPERATION_RECIPES.map(recipe => ({
+  ...recipe, enabled: false,
+  sourceField: 'event_src.title', sourceValues: recipe.platform === 'unix' ? 'auditd' : 'Microsoft-Windows-Security-Auditing',
+  eventField: 'msgid', host: 'event_src.host', pid: 'subject.process.id', guid: '',
+  // Source titles, msgid, syscall and ObjectType normalization depend on the
+  // installed expertise package; require explicit verified mapping.
+  operationField: '',
+  target: recipe.category === 'network' ? 'dst.ip' : recipe.category === 'access' ? 'object.process.id' : 'object.fullpath',
+  targetPort: recipe.category === 'network' ? 'dst.port' : '', targetPid: '',
+  protocol: recipe.category === 'network' ? 'protocol' : '', action: 'action', outcome: 'status', targetDetail: '', recordId: 'uuid', time: 'time',
+}))];
 export function processOperationIdentity(event) {
   const fact = normalizeProcessEvent(event);
   const pid = fact.references.find(ref => ref.kind === 'pid')?.value;
@@ -31,11 +43,11 @@ export async function searchMpOperations(input, { client, profiles: saved, scope
     dialect: { equal: buildEqualityPredicate, in: buildInPredicate, and: values => andPredicates(values),
       factual: 'correlation_name = null',
       guid: (field, value) => orPredicates([...new Set([value, value.toUpperCase(), `{${value}}`, `{${value.toUpperCase()}}`])].map(guid => buildEqualityPredicate(field, guid))),
-      pid: (field, value) => buildEqualityPredicate(field, /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : value) },
+      pid: (field, value, format) => format === 'text' ? buildInPredicate(field, pidTextValues(value)) : buildEqualityPredicate(field, /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : value) },
     isFact: event => !event.correlation_name,
     read: (event, field) => event[field] ?? '', parseTime: value => parseSiemTime(value)?.valueOf() ?? NaN,
     async fetch({ where, profile, offset, limit, from, to }) {
-      const select = [...new Set(['uuid', 'time', 'correlation_name', ...['sourceField', 'eventField', 'operationField', 'host', 'pid', 'guid', 'target', 'targetPort', 'targetPid', 'protocol', 'recordId', 'time'].map(key => profile[key]).filter(Boolean)])];
+      const select = [...new Set(['uuid', 'time', 'correlation_name', ...['sourceField', 'eventField', 'operationField', 'host', 'pid', 'guid', 'target', 'targetPort', 'targetPid', 'protocol', 'action', 'outcome', 'targetDetail', 'recordId', 'time'].map(key => profile[key]).filter(Boolean)])];
       const response = await client.searchEvents({ where, select, offset, limit, timeFrom: new Date(from).toISOString(), timeTo: new Date(to).toISOString(), scope,
         orderBy: [{ field: profile.time, sortOrder: 'ascending' }, { field: profile.recordId, sortOrder: 'ascending' }] });
       const events = Array.isArray(response) ? response : response?.events;
