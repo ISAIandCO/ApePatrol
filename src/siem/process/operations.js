@@ -77,11 +77,23 @@ export function resolveOperationProfiles(profiles, metadata) {
     return result;
   });
 }
+// Match buildProcessSearchPredicate: Windows msgid literals are numbers, while
+// named audit IDs remain strings. Do not coerce arbitrary configured fields.
+export function buildOperationInPredicate(field, values) {
+  if (field !== 'msgid') return buildInPredicate(field, values);
+  const numeric = [], named = [];
+  for (const value of values) {
+    if (/^(0|[1-9]\d*)$/.test(String(value)) && Number.isSafeInteger(Number(value))) numeric.push(Number(value));
+    else named.push(String(value));
+  }
+  const predicates = [numeric, named].filter(group => group.length).map(group => buildInPredicate(field, group));
+  return predicates.length === 1 ? predicates[0] : orPredicates(predicates);
+}
 export async function searchMpOperations(input, { client, profiles: saved, scope = {} }) {
   let profiles = migrateMpOperationProfiles(saved).profiles.filter(profile => profile.enabled && profile.platform === input.process.platform && profile.category === input.category);
   if (profiles.length) profiles = resolveOperationProfiles(profiles, await client.getEventMetadata());
   return searchOperationPage({ ...input, profiles,
-    dialect: { equal: buildEqualityPredicate, in: buildInPredicate, and: values => andPredicates(values),
+    dialect: { equal: buildEqualityPredicate, in: buildOperationInPredicate, and: values => andPredicates(values),
       factual: 'correlation_name = null',
       guid: (field, value) => orPredicates([...new Set([value, value.toUpperCase(), `{${value}}`, `{${value.toUpperCase()}}`])].map(guid => buildEqualityPredicate(field, guid))),
       pid: (field, value, format) => format === 'text' ? buildInPredicate(field, pidTextValues(value)) : buildEqualityPredicate(field, /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : value) },
@@ -89,8 +101,18 @@ export async function searchMpOperations(input, { client, profiles: saved, scope
     read: (event, field) => event[field] ?? '', parseTime: value => parseSiemTime(value)?.valueOf() ?? NaN,
     async fetch({ where, profile, offset, limit, from, to }) {
       const select = [...new Set(['correlation_name', ...['sourceField', 'eventField', 'operationField', 'host', 'pid', 'guid', 'target', 'targetPort', 'targetPid', 'protocol', 'action', 'outcome', 'targetDetail', 'recordId', 'time'].map(key => profile[key]).filter(Boolean)])];
-      const response = await client.searchEvents({ where, select, offset, limit, timeFrom: new Date(from).toISOString(), timeTo: new Date(to).toISOString(), scope,
-        orderBy: [{ field: profile.time, sortOrder: 'ascending' }, { field: profile.recordId, sortOrder: 'ascending' }] });
+      const query = { where, select, offset, limit, timeFrom: new Date(from).toISOString(), timeTo: new Date(to).toISOString(), scope,
+        orderBy: [{ field: profile.time, sortOrder: 'ascending' }, { field: profile.recordId, sortOrder: 'ascending' }] };
+      let response;
+      try { response = await client.searchEvents(query); }
+      catch (error) {
+        if (error.status === 400) {
+          // Local error card only: no headers, cookies, tokens or raw events.
+          // Keep every constraint and the cursor; do not retry a broader query.
+          error.message += `\nПрофиль: ${profile.name || profile.id}\nПараметры отклонённого запроса операций:\n${JSON.stringify(query, null, 2)}`;
+        }
+        throw error;
+      }
       const events = Array.isArray(response) ? response : response?.events;
       if (!Array.isArray(events)) throw new Error('MP SIEM вернула неизвестный формат событий');
       return events;
