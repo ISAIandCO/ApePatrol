@@ -96,7 +96,17 @@ it('operation categories load on demand, preserve graph view, group and collapse
   const canvas = app.document.getElementById('process-canvas');
   const card = node => canvas.dispatchEvent(new app.window.MouseEvent('contextmenu', { clientX: node.x * view.state.scale + view.state.offsetX, clientY: node.y * view.state.scale + view.state.offsetY, button: 2, bubbles: true }));
   const button = text => [...app.document.querySelectorAll('#process-tooltip button')].find(item => item.textContent === text && !item.disabled);
-  card(source); expect(search).not.toHaveBeenCalled(); button('Загрузить до 25').click();
+  response.operationProfiles.forEach(profile => { profile.enabled = false; });
+  card(source);
+  expect(button('Загрузить до 25')).toBeUndefined();
+  expect(app.document.getElementById('process-tooltip').textContent).not.toContain('Не настроен профиль');
+  response.operationProfiles.forEach(profile => { profile.enabled = true; });
+  response.operationProfiles.push({ enabled: true, category: 'registry', platform: 'unix' });
+  card(source); expect(search).not.toHaveBeenCalled();
+  expect(app.document.getElementById('process-tooltip').textContent).not.toContain('Не настроен профиль');
+  expect(app.document.getElementById('process-tooltip').textContent).not.toContain('Реестр Windows');
+  expect(app.document.querySelectorAll('#process-tooltip button:disabled')).toHaveLength(0);
+  button('Загрузить до 25').click();
   await vi.waitFor(() => expect(view.state.nodes.length).toBe(3));
   expect(search).toHaveBeenCalledTimes(1); expect(search.mock.calls[0][0].limit).toBe(25);
   expect(view.state.nodes[0]).toBe(source); expect(source.event.uuid).toBe('source');

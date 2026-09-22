@@ -18,8 +18,7 @@ export const DEFAULT_AI_SELECTED_FIELDS = Object.freeze([
 
 export { BUILTIN_PROVIDERS } from "@isaiandco/ape-share-core/ioc/report-links";
 
-import { migrateOperationProfiles } from "@isaiandco/ape-share-core/settings/operation-profiles";
-import { DEFAULT_OPERATION_PROFILES } from "../siem/process/operations.js";
+import { DEFAULT_OPERATION_PROFILES, migrateMpOperationProfiles } from "../siem/process/operations.js";
 export const DEFAULT_SETTINGS = Object.freeze({
   operationProfiles: { version: 1, profiles: DEFAULT_OPERATION_PROFILES },
   schemaVersion: 8,
@@ -130,7 +129,7 @@ export function normalizeSettings(input) {
   const fieldAliases = normalizeFieldAliases(input.fieldAliases ?? defaults.fieldAliases);
   return {
     ...defaults,
-    operationProfiles: migrateOperationProfiles(input.operationProfiles, DEFAULT_OPERATION_PROFILES),
+    operationProfiles: migrateMpOperationProfiles(input.operationProfiles),
     schemaVersion: 8,
     instances,
     features,

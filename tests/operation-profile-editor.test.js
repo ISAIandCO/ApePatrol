@@ -30,9 +30,13 @@ it('adds new recommendations explicitly without overwriting saved profiles, and 
   expect(editor.get().profiles).toHaveLength(DEFAULT_OPERATION_PROFILES.length);
   expect(editor.get().profiles[0].pid).toBe('customActor');
   const card = [...root.querySelectorAll('details')].find(item => item.querySelector('summary').textContent.includes('Linux auditd: connect'));
-  card.querySelector('input[type="checkbox"]').checked = true;
-  expect(() => editor.get()).toThrow('укажите поле');
+  expect(card.querySelector('input[type="checkbox"]').disabled).toBe(true);
+  expect(card.querySelector('[data-operation-readiness]').textContent).toContain('поле типа объекта');
+  expect(() => editor.get()).not.toThrow();
   card.querySelector('[data-operation-field="operationField"]').value = 'datafield1';
+  card.querySelector('[data-operation-field="operationField"]').dispatchEvent(new dom.window.Event('input'));
+  expect(card.querySelector('input[type="checkbox"]').disabled).toBe(false);
+  card.querySelector('input[type="checkbox"]').click();
   expect(editor.get().profiles.find(item => item.id === 'auditd-network').selectorRequired).toBe(true);
   dom.window.close();
 });
