@@ -22,8 +22,7 @@ import { domSettingsFingerprint, settingsImpact } from "./settings-runtime.js";
 import { ERROR_CODES, normalizeError } from "../shared/errors.js";
 import { aroundTime } from "../shared/time.js";
 
-import { searchMpOperations, DEFAULT_OPERATION_PROFILES } from "../siem/process/operations.js";
-import { migrateOperationProfiles } from "@isaiandco/ape-share-core/settings/operation-profiles";
+import { searchMpOperations, migrateMpOperationProfiles } from "../siem/process/operations.js";
 const PROCESS_FIELDS = [
   "uuid", "time", "msgid", "event_src.host", "object.id", "object.name",
   "event_src.product", "event_src.os", "object.process.fullpath", "subject.process.fullpath",
@@ -252,13 +251,13 @@ function processWorkflow(client, settings) {
 }
 
 async function buildProcessContext(client, event, settings, mode, signal) {
-  return { ...(await processWorkflow(client, settings).load(event, mode, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
+  return { ...(await processWorkflow(client, settings).load(event, mode, signal)), operationProfiles: migrateMpOperationProfiles(settings.operationProfiles).profiles };
 }
 async function expandProcessContext(client, event, settings, message, signal) {
-  return { ...(await processWorkflow(client, settings).expand(event, message, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
+  return { ...(await processWorkflow(client, settings).expand(event, message, signal)), operationProfiles: migrateMpOperationProfiles(settings.operationProfiles).profiles };
 }
 async function expandProcessNode(client, event, settings, message, signal) {
-  return { ...(await processWorkflow(client, settings).expandNode(event, message, signal)), operationProfiles: migrateOperationProfiles(settings.operationProfiles, DEFAULT_OPERATION_PROFILES).profiles };
+  return { ...(await processWorkflow(client, settings).expandNode(event, message, signal)), operationProfiles: migrateMpOperationProfiles(settings.operationProfiles).profiles };
 }
 
 function processScope(settings) {
