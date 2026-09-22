@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { searchMpOperations, DEFAULT_OPERATION_PROFILES, processOperationIdentity, migrateMpOperationProfiles } from '../src/siem/process/operations.js';
 import { normalizeSettings } from '../src/shared/settings.js';
 import { SiemApiClient } from '../src/siem/api/client.js';
-const metadata = { fields: ['uuid', 'time', 'correlation_name', 'event_src.host', 'event_src.title', 'msgid', 'subject.process.id', 'subject.process.guid', 'object.fullpath', 'object.name', 'object.type', 'object.process.id', 'object.process.name', 'dst.ip', 'dst.port', 'protocol', 'action', 'status', 'datafield1'].map(name => ({ name, filterable: true })) };
+const metadata = { fields: ['uuid', 'time', 'correlation_name', 'event_src.host', 'event_src.title', 'event_src.provider', 'msgid', 'subject.process.id', 'subject.process.guid', 'object.fullpath', 'object.name', 'object.type', 'object.process.id', 'object.process.name', 'dst.ip', 'dst.port', 'protocol', 'action', 'status', 'datafield1'].map(name => ({ name, filterable: true })) };
 const getEventMetadata = async () => metadata;
 const from = Date.parse('2026-01-01T00:00:00Z');
 const process = { host: 'workstation.example', pid: '42', guid: '', from, to: from + 60000, platform: 'windows' };
@@ -47,7 +47,7 @@ describe('MP operation adapter', () => {
 it('Windows Security and Linux catalog profiles use verified custom classifier fields in PDQL and parsing', async () => {
   for (const preset of DEFAULT_OPERATION_PROFILES.filter(item => !item.id.startsWith('sysmon-'))) {
     const configured = { ...preset, enabled: true, sourceValues: 'synthetic-source', operationField: preset.selectorRequired ? 'datafield1' : '', target: 'object.name' };
-    const record = { uuid: `fixture-${preset.id}`, time: new Date(from + 1000).toISOString(), 'event_src.host': process.host, 'event_src.title': 'synthetic-source', msgid: preset.eventValues.split(',')[0].trim(), 'subject.process.id': 42, 'object.process.id': 999, 'object.name': preset.category === 'access' ? '73' : '/example/target', datafield1: preset.operationValues?.split(',')[0].trim(), action: 'read', status: 'success' };
+    const record = { uuid: `fixture-${preset.id}`, time: new Date(from + 1000).toISOString(), 'event_src.host': process.host, [configured.sourceField]: 'synthetic-source', msgid: preset.eventValues.split(',')[0].trim(), 'subject.process.id': 42, 'object.process.id': 999, 'object.name': preset.category === 'access' ? '73' : '/example/target', datafield1: preset.operationValues?.split(',')[0].trim(), action: 'read', status: 'success' };
     const client = { getEventMetadata, searchEvents: vi.fn(async () => [record]) };
     const result = await searchMpOperations({ process: { ...process, platform: preset.platform }, category: preset.category }, { client, profiles: [configured] });
     const query = client.searchEvents.mock.calls[0][0];
@@ -143,4 +143,41 @@ it('400 exposes the rejected query locally without credentials, retry or changin
   expect(failure.message).toContain('"limit": 25'); expect(failure.message).toContain('"offset": 0');
   expect(failure.message).toContain('"orderBy"'); expect(failure.message).not.toContain('secret-test-token');
   expect(client.searchEvents).toHaveBeenCalledTimes(1);
+});
+
+it('Security registry defaults match the reported 4663 field structure without trusting the provider title', async () => {
+  // Synthetic minimal fixture: no uploaded body, host, asset IDs or registry path.
+  const record = {
+    uuid: 'synthetic-registry-access', time: new Date(from + 1000).toISOString(),
+    'event_src.host': process.host, 'event_src.title': 'windows',
+    'event_src.provider': 'Microsoft-Windows-Security-Auditing', 'event_src.subsys': 'security',
+    msgid: '4663', object: 'reg_object', 'object.type': 'key',
+    'object.fullpath': '\\registry\\machine\\software\\example',
+    'subject.process.id': '42', 'subject.process.guid': null,
+    'object.process.id': null, action: 'access', status: 'success',
+  };
+  const preset = { ...DEFAULT_OPERATION_PROFILES.find(item => item.id === 'security-registry-access'), enabled: true };
+  const client = { getEventMetadata, searchEvents: vi.fn(async () => [record]) };
+  const page = await searchMpOperations({ process, category: 'registry' }, { client, profiles: [preset] });
+  const query = client.searchEvents.mock.calls[0][0];
+  expect(query.where).toContain("event_src.provider in ['Microsoft-Windows-Security-Auditing']");
+  expect(query.where).toContain("object.type in ['key']");
+  expect(query.where).not.toContain('event_src.title');
+  expect(query.where).not.toContain('registry_key');
+  expect(query.where).toContain('subject.process.id = 42');
+  expect(page.facts).toHaveLength(1);
+  expect(page.facts[0].label).toBe(record['object.fullpath']);
+  expect(page.facts[0].pid).toBe('42');
+});
+
+it('migrates exact old Security source and registry mappings while preserving custom settings', () => {
+  const current = DEFAULT_OPERATION_PROFILES.find(item => item.id === 'security-registry-access');
+  const old = { ...current, enabled: true, sourceField: 'event_src.title', sourceValues: 'Microsoft-Windows-Security-Auditing', operationField: 'object.type', operationValues: 'registry_key', pid: 'customActor', target: 'customTarget' };
+  const migrated = migrateMpOperationProfiles({ version: 1, profiles: [old] });
+  expect(migrated.profiles[0]).toMatchObject({ enabled: true, sourceField: 'event_src.provider', operationValues: 'key', pid: 'customActor', target: 'customTarget' });
+  expect(migrateMpOperationProfiles(migrated)).toEqual(migrated);
+  const custom = migrateMpOperationProfiles([{ ...old, sourceValues: 'windows', operationValues: 'customKey' }]).profiles[0];
+  expect(custom.sourceField).toBe('event_src.title'); expect(custom.sourceValues).toBe('windows');
+  expect(custom.operationValues).toBe('customKey');
+  expect(migrateMpOperationProfiles([{ ...old, operationField: '', operationValues: 'Key' }]).profiles[0]).toMatchObject({ operationField: 'object.type', operationValues: 'key' });
 });

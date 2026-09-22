@@ -18,26 +18,31 @@ const SYSMON_OPERATION_PROFILES = [
 }));
 export const DEFAULT_OPERATION_PROFILES = [...SYSMON_OPERATION_PROFILES, ...AUDIT_OPERATION_RECIPES.map(recipe => ({
   ...recipe, enabled: false,
-  sourceField: 'event_src.title', sourceValues: recipe.platform === 'unix' ? 'auditd' : 'Microsoft-Windows-Security-Auditing',
+  sourceField: recipe.platform === 'unix' ? 'event_src.title' : 'event_src.provider', sourceValues: recipe.platform === 'unix' ? 'auditd' : 'Microsoft-Windows-Security-Auditing',
   eventField: 'msgid', host: 'event_src.host', pid: 'subject.process.id', guid: '',
   // MP normalizes Security ObjectType into object.type. Audit syscall names
   // have no uniform field across expertise packages and remain draft mappings.
   operationField: recipe.id.startsWith('security-') && recipe.selectorRequired ? 'object.type' : '',
-  operationValues: recipe.id === 'security-files' ? 'file' : recipe.id === 'security-registry-access' ? 'registry_key' : recipe.id === 'security-access' ? 'process' : recipe.operationValues,
+  operationValues: recipe.id === 'security-files' ? 'file' : recipe.id === 'security-registry-access' ? 'key' : recipe.id === 'security-access' ? 'process' : recipe.operationValues,
   target: recipe.category === 'network' ? 'dst.ip' : recipe.category === 'access' ? 'object.process.id' : 'object.fullpath',
   targetPort: recipe.category === 'network' ? 'dst.port' : '', targetPid: '',
   protocol: recipe.category === 'network' ? 'protocol' : '', action: 'action', outcome: 'status', targetDetail: '', recordId: 'uuid', time: 'time',
 }))];
 export function migrateMpOperationProfiles(saved) {
-  // Repair only untouched incomplete Security templates from 3.4.26. Keep all
+  // Repair exact shipped Security mappings from 3.4.26–3.4.28. Keep all
   // explicit classifier mappings/values and enabled flags chosen by the user.
   const repair = profile => {
+    let corrected = { ...profile };
     const recommended = DEFAULT_OPERATION_PROFILES.find(item => item.id === profile.id);
     const original = AUDIT_OPERATION_RECIPES.find(item => item.id === profile.id);
     if (recommended?.operationField && !profile.operationField && profile.operationValues === original?.operationValues) {
-      return { ...profile, operationField: recommended.operationField, operationValues: recommended.operationValues };
+      corrected = { ...corrected, operationField: recommended.operationField, operationValues: recommended.operationValues };
     }
-    return profile;
+    if (recommended?.platform === 'windows' && profile.id.startsWith('security-')) {
+      if (profile.sourceField === 'event_src.title' && profile.sourceValues === 'Microsoft-Windows-Security-Auditing') corrected.sourceField = 'event_src.provider';
+      if (profile.id === 'security-registry-access' && profile.operationField === 'object.type' && profile.operationValues === 'registry_key') corrected.operationValues = 'key';
+    }
+    return corrected;
   };
   const value = Array.isArray(saved) ? saved.map(repair) : saved?.version === 1 ? { ...saved, profiles: saved.profiles.map(repair) } : saved;
   return migrateOperationProfiles(value, DEFAULT_OPERATION_PROFILES);
