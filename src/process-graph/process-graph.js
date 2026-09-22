@@ -3,6 +3,7 @@ import { buildProcessGraphView } from "../siem/process/view-model.js";
 import { buildEqualityPredicate } from "../shared/pdql/builder.js";
 import { buildEventSearchUrl } from "../siem/features/related-events.js";
 
+import { processOperationIdentity } from "../siem/process/operations.js";
 const params = new URLSearchParams(location.search);
 let sourceTabId = Number(params.get("tabId"));
 const snapshotId = params.get("snapshotId");
@@ -30,6 +31,8 @@ const view = mountProcessGraph(document, {
   loadForceSettings: () => JSON.parse(localStorage.getItem(key) ?? "{}"),
   saveForceSettings: value => localStorage.setItem(key, JSON.stringify(value)),
   load: ({ mode, requestId }) => query({ type: "siem:process", mode, requestId }),
+  processIdentity: node => processOperationIdentity(node.event),
+  searchOperations: input => query({ type: "siem:process:operations", input }).then(result => result.page),
   expand: input => expansion("siem:process:expand", input),
   expandNode: input => expansion("siem:process:expand-node", input),
   cancel: requestId => query({ type: "siem:process:cancel", requestId }),
@@ -66,8 +69,9 @@ const view = mountProcessGraph(document, {
     return result.workspace.title;
   },
   async open(node, state) {
-    if (!node.event?.uuid || !state.origin) throw new Error("У процесса нет UUID события или адреса SIEM");
-    await runtime({ type: "tabs:open", url: buildEventSearchUrl(state.origin, buildEqualityPredicate("uuid", node.event.uuid), node.event.time, "15m") });
+    const recordId = node.operationFact?.id || node.event?.uuid;
+    if (!recordId || !state.origin) throw new Error("У процесса нет UUID события или адреса SIEM");
+    await runtime({ type: "tabs:open", url: buildEventSearchUrl(state.origin, buildEqualityPredicate(node.operationFact?.recordField || "uuid", recordId), node.operationFact?.time || node.event.time, "15m") });
   },
   openWorkspace: () => browser.tabs.create({ url: browser.runtime.getURL("workspace.html") }),
 });
