@@ -109,3 +109,38 @@ it('Security defaults enable without missing classifier errors and untouched old
   expect(migrateMpOperationProfiles([{ ...saved[0], operationField: 'customType' }]).profiles[0].operationField).toBe('customType');
   expect(migrateMpOperationProfiles([]).profiles).toEqual([]);
 });
+
+it('serializes numeric Windows msgid like the existing graph and preserves named/custom IDs', async () => {
+  for (const [field, values, expected] of [
+    ['msgid', '11, 2', 'msgid in [11, 2]'],
+    ['msgid', '4663', 'msgid in [4663]'],
+    ['msgid', 'SYSCALL', "msgid in ['SYSCALL']"],
+    ['msgid', '11, execve', "(msgid in [11]) or (msgid in ['execve'])"],
+    ['datafield1', '11, 2', "datafield1 in ['11', '2']"],
+  ]) {
+    const requests = [];
+    const client = new SiemApiClient('https://siem.example', { fetchImpl: async (url, request) => {
+      if (String(url).includes('events_metadata')) return new Response(JSON.stringify(metadata), { headers: { 'content-type': 'application/json' } });
+      const body = JSON.parse(request.body); requests.push(body);
+      if (/msgid in \['\d/.test(body.filter.where)) return new Response('BadRequest', { status: 400 });
+      return new Response(JSON.stringify({ events: [{ ...event(1), [field]: values.split(',')[0].trim() }] }), { headers: { 'content-type': 'application/json' } });
+    } });
+    const result = await searchMpOperations({ process, category: 'files' }, { client, profiles: [{ ...profile, eventField: field, eventValues: values }] });
+    expect(requests[0].filter.where).toContain(expected);
+    expect(result.facts).toHaveLength(1);
+  }
+});
+
+it('400 exposes the rejected query locally without credentials, retry or changing the page', async () => {
+  const { SiemApiError } = await import('../src/siem/api/client.js');
+  const error = new SiemApiError('http', 'HTTP 400: BadRequest', { status: 400 });
+  const client = { getEventMetadata, credentials: 'secret-test-token', searchEvents: vi.fn(async () => { throw error; }) };
+  let failure;
+  try { await searchMpOperations({ process, category: 'files' }, { client, profiles: [profile] }); } catch (caught) { failure = caught; }
+  expect(failure).toBe(error); expect(failure.status).toBe(400);
+  expect(failure.message).toContain('Sysmon: files');
+  expect(failure.message).toContain('msgid in [11, 2, 15, 23, 26]');
+  expect(failure.message).toContain('"limit": 25'); expect(failure.message).toContain('"offset": 0');
+  expect(failure.message).toContain('"orderBy"'); expect(failure.message).not.toContain('secret-test-token');
+  expect(client.searchEvents).toHaveBeenCalledTimes(1);
+});
